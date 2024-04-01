@@ -1,0 +1,8 @@
+# vscode
+.vscode/
+
+# image logs
+output_logs/inter_frames/*
+
+# build
+build/*
