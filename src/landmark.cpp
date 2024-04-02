@@ -1,4 +1,4 @@
 #include "landmark.hpp"
 
 // static variable
-int Landmark::id = -1;
+int Landmark::total_landmark_cnt_ = 0;

@@ -6,14 +6,16 @@
 
 class Frame{
 public:
-    Frame() {id_++;};
+    Frame() {id_ = total_frame_cnt_++;};
 
-    static int id_;
+    static int total_frame_cnt_;
+
+    int id_;
     cv::Mat image_;
     std::vector<cv::KeyPoint> keypoints_;
+    cv::Mat descriptors_;
     std::vector<double> depths_;
-    // std::vector<cv::Point2f> keypoints_pts;  // not needed?
-    cv::Mat keypoints_3d_;
+    std::vector<Eigen::Vector3d> keypoints_3d_;
     gtsam::Pose3 pose_;  // pose in world frame
     Eigen::Isometry3d relative_pose_;  // relative pose between current and previous frame
 
@@ -24,5 +26,9 @@ public:
     // camera parameter
     static std::shared_ptr<Camera> pCamera_;
 
-    void setKeypoints(const std::vector<cv::KeyPoint> &keypoints);
+    // other frame pointers
+    std::weak_ptr<Frame> pPrevious_frame_;
+    std::weak_ptr<Frame> pNext_frame_;
+
+    void setKeypoints(const std::vector<cv::KeyPoint> &keypoints, const cv::Mat &descriptors);
 };
