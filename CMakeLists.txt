@@ -7,7 +7,7 @@ set(CMAKE_BUILD_TYPE Debug)
 ##=========================DEPENDENCIES=========================##
 find_package(Eigen3 REQUIRED)
 find_package(GTSAM REQUIRED)
-find_package(OpenCV REQUIRED)   # -DOpenCV_DIR=/home/kodogyu/opencv/build
+find_package(OpenCV 4 REQUIRED)   # -DOpenCV_DIR=/home/kodogyu/opencv/build
 find_package(Sophus REQUIRED)
 find_package(Pangolin 0.8 REQUIRED)
 
@@ -19,7 +19,13 @@ include_directories(
     ${GTSAM_INCLUDE_DIRS}
     ${OpenCV_INCLUDE_DIRS}
     ${Pangolin_INCLUDE_DIRS}
+    ${PROJECT_SOURCE_DIR}/include
 )
 
-add_executable(visual_odometry src/visual_odometry.cpp)
+add_executable(visual_odometry
+    src/camera.cpp
+    src/frame
+    src/landmark
+    src/visual_odometry.cpp
+    src/visualizer.cpp)
 target_link_libraries(visual_odometry ${OpenCV_LIBS} ${Pangolin_LIBRARIES} gtsam)
