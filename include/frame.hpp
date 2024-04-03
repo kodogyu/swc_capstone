@@ -6,7 +6,7 @@
 
 class Frame{
 public:
-    Frame() {id_ = total_frame_cnt_++;};
+    Frame();
 
     static int total_frame_cnt_;
 
@@ -24,7 +24,7 @@ public:
     std::vector<std::pair<int, int>> keypoint_landmark_;  // keypoint_landmark[keypoint_idx] = std::pair(landmarks_idx, landmark_id)
 
     // camera parameter
-    static std::shared_ptr<Camera> pCamera_;
+    std::shared_ptr<Camera> pCamera_;
 
     // other frame pointers
     std::weak_ptr<Frame> pPrevious_frame_;

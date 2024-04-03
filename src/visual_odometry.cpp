@@ -20,18 +20,17 @@
 #include "visualizer.hpp"
 
 void triangulate(cv::Mat cameraMatrix, std::shared_ptr<Frame> &pPrev_frame, std::shared_ptr<Frame> &pCurr_frame, std::vector<cv::DMatch> good_matches, gtsam::Pose3 relative_pose, std::vector<gtsam::Point3> &frame_keypoints_3d);
-void triangulate(cv::Mat cameraMatrix, std::vector<cv::Point> image0_keypoint_pts, std::vector<cv::Point> image1_keypoint_pts, gtsam::Pose3 relative_pose, std::vector<gtsam::Point3> &frame_keypoints_3d);
 double estimateScale(const std::shared_ptr<Frame> &pPrev_frame, const std::shared_ptr<Frame> &pCurr_frame, std::vector<int> &scale_mask);
 void applyScale(std::shared_ptr<Frame> &pFrame, const double scale_ratio, const std::vector<int> &scale_mask);
 
 int main(int argc, char** argv) {
     std::cout << CV_VERSION << std::endl;
-    //**========== 0. Image load ==========**//
     if (argc != 2) {
         std::cout << "Usage: visual_odometry_example config_yaml" << std::endl;
         return 1;
     }
 
+    //**========== Parse config file ==========**//
     std::vector<cv::Mat> keypoints_3d_vec;
 
     cv::FileStorage config_file(argv[1], cv::FileStorage::READ);
@@ -51,32 +50,53 @@ int main(int argc, char** argv) {
     // sort entry vectors
     std::sort(left_image_entries.begin(), left_image_entries.end());
 
-    cv::Mat image0_left, image1_left;
+    // camera
+    double fx = config_file["fx"];
+    double fy = config_file["fy"];
+    double s = config_file["s"];
+    double cx = config_file["cx"];
+    double cy = config_file["cy"];
+    std::shared_ptr<Camera> camera = std::make_shared<Camera>(fx, fy, s, cx, cy);
+
     gtsam::Pose3 relative_pose;
     std::vector<std::shared_ptr<Frame>> frames;
     std::vector<gtsam::Pose3> poses;
     std::vector<double> scales;
-    Camera camera;
+    std::vector<int64_t> feature_extraction_costs;
+    std::vector<int64_t> feature_matching_costs;
+    std::vector<int64_t> motion_estimation_costs;
+    std::vector<int64_t> triangulation_costs;
+    std::vector<int64_t> scaling_costs;
+    std::vector<int64_t> total_time_costs;
+    cv::Mat image0_left, image1_left;
+
+    //**========== 0. Image load ==========**//
     // read images
     image0_left = cv::imread(left_image_entries[0], cv::IMREAD_GRAYSCALE);
     poses.push_back(gtsam::Pose3());
     std::shared_ptr<Frame> pPrev_frame = std::make_shared<Frame>();
-    Frame prev_frame = *pPrev_frame;
     pPrev_frame->image_ = image0_left;
+    pPrev_frame->pCamera_ = camera;
     for (int i = 1; i < num_frames; i++) {
+        // start timer [total time cost]
+        std::chrono::time_point<std::chrono::steady_clock> total_time_start = std::chrono::steady_clock::now();
+
         image1_left = cv::imread(left_image_entries[i], cv::IMREAD_GRAYSCALE);
         // new Frame!
         std::shared_ptr<Frame> pCurr_frame = std::make_shared<Frame>();
-        Frame curr_frame = *pCurr_frame;
         pCurr_frame->image_ = image1_left;
+        pCurr_frame->pCamera_ = camera;
         pCurr_frame->pPrevious_frame_ = pPrev_frame;
         pPrev_frame->pNext_frame_ = pCurr_frame;
 
         //**========== 1. Feature extraction ==========**//
+        // start timer [feature extraction]
+        std::chrono::time_point<std::chrono::steady_clock> feature_extraction_start = std::chrono::steady_clock::now();
+
         cv::Mat curr_image_descriptors;
         std::vector<cv::KeyPoint> curr_image_keypoints;
         // create orb feature extractor
-        cv::Ptr<cv::ORB> orb = cv::ORB::create();
+        cv::Ptr<cv::ORB> orb = cv::ORB::create(5000, 1.2, 8, 31, 0, 2, cv::ORB::FAST_SCORE, 31, 25);
 
         if (i == 1) {  // first run
             cv::Mat prev_image_descriptors;
@@ -87,30 +107,40 @@ int main(int argc, char** argv) {
         orb->detectAndCompute(pCurr_frame->image_, cv::Mat(), curr_image_keypoints, curr_image_descriptors);
         pCurr_frame->setKeypoints(curr_image_keypoints, curr_image_descriptors);
 
-        //TODO matched keypoint filtering (RANSAC?)
+        // end timer [feature extraction]
+        std::chrono::time_point<std::chrono::steady_clock> feature_extraction_end = std::chrono::steady_clock::now();
+        // feature extraction cost (us)
+        auto feature_extraction_diff = feature_extraction_end - feature_extraction_start;
+        auto feature_extraction_cost = std::chrono::duration_cast<std::chrono::microseconds>(feature_extraction_diff).count();
+        feature_extraction_costs.push_back(feature_extraction_cost);
+
         //**========== 2. Feature matching ==========**//
+        // start timer [feature matching]
+        std::chrono::time_point<std::chrono::steady_clock> feature_matching_start = std::chrono::steady_clock::now();
+
         // create a matcher
         cv::Ptr<cv::DescriptorMatcher> orb_matcher = cv::DescriptorMatcher::create(cv::DescriptorMatcher::BRUTEFORCE);
 
-        // image0 left & image1 left (matcher matching)
+        // image0 & image1 (matcher matching)
         std::vector<std::vector<cv::DMatch>> image_matches01_vec;
         std::vector<std::vector<cv::DMatch>> image_matches10_vec;
         double between_dist_thresh = 0.70;
-        orb_matcher->knnMatch(pPrev_frame->descriptors_, pCurr_frame->descriptors_, image_matches01_vec, 2);
-        orb_matcher->knnMatch(pCurr_frame->descriptors_, pPrev_frame->descriptors_, image_matches10_vec, 2);
+        orb_matcher->knnMatch(pPrev_frame->descriptors_, pCurr_frame->descriptors_, image_matches01_vec, 2);  // prev -> curr matches
+        orb_matcher->knnMatch(pCurr_frame->descriptors_, pPrev_frame->descriptors_, image_matches10_vec, 2);  // curr -> prev matches
 
         std::vector<cv::DMatch> good_matches;  // good matchings
         for (int i = 0; i < image_matches01_vec.size(); i++) {
-            if (image_matches01_vec[i][0].distance < image_matches01_vec[i][1].distance * between_dist_thresh) {
-                if (image_matches10_vec[image_matches01_vec[i][0].trainIdx][0].distance < image_matches10_vec[image_matches01_vec[i][0].trainIdx][1].distance) {  // 상호 유사도 체크
-                    if (image_matches01_vec[i][0].queryIdx == image_matches10_vec[image_matches01_vec[i][0].trainIdx][0].trainIdx)
+            if (image_matches01_vec[i][0].distance < image_matches01_vec[i][1].distance * between_dist_thresh) {  // prev -> curr match에서 좋은가?
+                int image1_keypoint_idx = image_matches01_vec[i][0].trainIdx;
+                if (image_matches10_vec[image1_keypoint_idx][0].distance < image_matches10_vec[image1_keypoint_idx][1].distance * between_dist_thresh) {  // curr -> prev match에서 좋은가?
+                    if (image_matches01_vec[i][0].queryIdx == image_matches10_vec[image1_keypoint_idx][0].trainIdx)
                         good_matches.push_back(image_matches01_vec[i][0]);
                 }
             }
         }
+
         std::cout << "original features for image" + std::to_string(i - 1) + "&" + std::to_string(i) + ": " << image_matches01_vec.size() << std::endl;
         std::cout << "good features for image" + std::to_string(i - 1) + "&" + std::to_string(i) + ": " << good_matches.size() << std::endl;
-
         // cv::Mat image_matches;
         // cv::drawMatches(image0_left, prev_image_keypoints, image1_left, curr_image_keypoints, good_matches, image_matches);
         // cv::imwrite("output_logs/inter_frames/frame"
@@ -120,15 +150,19 @@ int main(int argc, char** argv) {
         //         + "_kp_matches(raw).png", image_matches);
 
         // RANSAC
-        std::vector<cv::Point> image0_kp_pts;
-        std::vector<cv::Point> image1_kp_pts;
+        std::vector<cv::KeyPoint> image0_kps;
+        std::vector<cv::KeyPoint> image1_kps;
+        std::vector<cv::Point2f> image0_kp_pts;
+        std::vector<cv::Point2f> image1_kp_pts;
         for (auto match : good_matches) {
             image0_kp_pts.push_back(pPrev_frame->keypoints_[match.queryIdx].pt);
             image1_kp_pts.push_back(pCurr_frame->keypoints_[match.trainIdx].pt);
+            image0_kps.push_back(pPrev_frame->keypoints_[match.queryIdx]);
+            image1_kps.push_back(pCurr_frame->keypoints_[match.trainIdx]);
         }
 
         cv::Mat mask;
-        cv::Mat essential_mat = cv::findEssentialMat(image0_kp_pts, image1_kp_pts, camera.intrinsic_.at<double>(0, 0), cv::Point2d(0, 0), cv::RANSAC, 0.999, 1.0, mask);
+        cv::Mat essential_mat = cv::findEssentialMat(image1_kp_pts, image0_kp_pts, camera->intrinsic_, cv::RANSAC, 0.999, 1.0, mask);
         cv::Mat ransac_matches;
         cv::drawMatches(pPrev_frame->image_, pPrev_frame->keypoints_,
                         pCurr_frame->image_, pCurr_frame->keypoints_,
@@ -147,48 +181,96 @@ int main(int argc, char** argv) {
             }
         }
 
-        //** Motion estimation **//
+        // end timer [feature matching]
+        std::chrono::time_point<std::chrono::steady_clock> feature_matching_end = std::chrono::steady_clock::now();
+        // feature matching cost (us)
+        auto feature_matching_diff = feature_matching_end - feature_matching_start;
+        auto feature_matching_cost = std::chrono::duration_cast<std::chrono::microseconds>(feature_matching_diff).count();
+        feature_matching_costs.push_back(feature_matching_cost);
+
+        //**========== 3. Motion estimation ==========**//
+        // start timer [motion estimation]
+        std::chrono::time_point<std::chrono::steady_clock> motion_estimation_start = std::chrono::steady_clock::now();
+
         cv::Mat R, t;
-        cv::recoverPose(essential_mat, image0_kp_pts, image1_kp_pts, camera.intrinsic_, R, t, mask);
+        cv::recoverPose(essential_mat, image1_kp_pts, image0_kp_pts, camera->intrinsic_, R, t, mask);
 
         Eigen::Matrix3d rotation_mat;
         Eigen::Vector3d translation_mat;
         cv::cv2eigen(R, rotation_mat);
         cv::cv2eigen(t, translation_mat);
-        relative_pose = gtsam::Pose3(gtsam::Rot3(rotation_mat), gtsam::Point3(translation_mat));
+        gtsam::Rot3 rotation = gtsam::Rot3(rotation_mat);
+        gtsam::Point3 translation = gtsam::Point3(translation_mat);
+        relative_pose = gtsam::Pose3(rotation, translation);
         Eigen::Isometry3d relative_pose_eigen;
         relative_pose_eigen.linear() = rotation_mat;
         relative_pose_eigen.translation() = translation_mat;
         pCurr_frame->relative_pose_ = relative_pose_eigen;
+        pCurr_frame->pose_ = pPrev_frame->pose_ * relative_pose;
         poses.push_back(poses[i - 1] * relative_pose);
 
-        //** Triangulation **//
+        // end timer [motion estimation]
+        std::chrono::time_point<std::chrono::steady_clock> motion_estimation_end = std::chrono::steady_clock::now();
+        // motion estimation cost (us)
+        auto motion_estimation_diff = motion_estimation_end - motion_estimation_start;
+        auto motion_estimation_cost = std::chrono::duration_cast<std::chrono::microseconds>(motion_estimation_diff).count();
+        motion_estimation_costs.push_back(motion_estimation_cost);
+
+        //**========== 4. Triangulation ==========**//
+        // start timer [triangulation]
+        std::chrono::time_point<std::chrono::steady_clock> triangulation_start = std::chrono::steady_clock::now();
+
         std::vector<Eigen::Vector3d> keypoints_3d;
-        triangulate(camera.intrinsic_, pPrev_frame, pCurr_frame, good_matches, relative_pose, keypoints_3d);
+        triangulate(camera->intrinsic_, pPrev_frame, pCurr_frame, good_matches, relative_pose, keypoints_3d);
         pPrev_frame->keypoints_3d_ = keypoints_3d;
 
-        //** Scale estimation **//
-        std::vector<int> scale_mask(pCurr_frame->keypoints_.size(), 0);
-        double scale_ratio = estimateScale(pPrev_frame, pCurr_frame, scale_mask);
-        scales.push_back(scale_ratio);
-        applyScale(pCurr_frame, scale_ratio, scale_mask);
+        // end timer [triangulation]
+        std::chrono::time_point<std::chrono::steady_clock> triangulation_end = std::chrono::steady_clock::now();
+        // motion estimation cost (us)
+        auto triangulation_diff = triangulation_end - triangulation_start;
+        auto triangulation_cost = std::chrono::duration_cast<std::chrono::microseconds>(triangulation_diff).count();
+        triangulation_costs.push_back(triangulation_cost);
 
-        cv::Mat keypoints_3d_mat = cv::Mat(3, pCurr_frame->keypoints_3d_.size(), CV_64F);
+        //**========== 5. Scale estimation ==========**//
+        // start timer [scaling]
+        std::chrono::time_point<std::chrono::steady_clock> scaling_start = std::chrono::steady_clock::now();
+
+        // std::vector<int> scale_mask(pCurr_frame->keypoints_.size(), 0);
+        // double scale_ratio = estimateScale(pPrev_frame, pCurr_frame, scale_mask);
+        // scales.push_back(scale_ratio);
+        // applyScale(pCurr_frame, scale_ratio, scale_mask);
+
+        // end timer [scaling]
+        std::chrono::time_point<std::chrono::steady_clock> scaling_end = std::chrono::steady_clock::now();
+        // scaling time cost (us)
+        auto scaling_diff = scaling_end - scaling_start;
+        auto scaling_cost = std::chrono::duration_cast<std::chrono::microseconds>(scaling_diff).count();
+        scaling_costs.push_back(scaling_cost);
+
+        cv::Mat keypoints_3d_mat = cv::Mat(3, pPrev_frame->keypoints_3d_.size(), CV_64F);
         for (int i = 0; i < keypoints_3d.size(); i++) {
-            keypoints_3d_mat.at<double>(0, i) = pCurr_frame->keypoints_3d_[i].x();
-            keypoints_3d_mat.at<double>(1, i) = pCurr_frame->keypoints_3d_[i].y();
-            keypoints_3d_mat.at<double>(2, i) = pCurr_frame->keypoints_3d_[i].z();
+            keypoints_3d_mat.at<double>(0, i) = pPrev_frame->keypoints_3d_[i].x();
+            keypoints_3d_mat.at<double>(1, i) = pPrev_frame->keypoints_3d_[i].y();
+            keypoints_3d_mat.at<double>(2, i) = pPrev_frame->keypoints_3d_[i].z();
         }
         keypoints_3d_vec.push_back(keypoints_3d_mat);
 
         // move on
         frames.push_back(pPrev_frame);
         pPrev_frame = pCurr_frame;
+
+        // end timer [total time]
+        std::chrono::time_point<std::chrono::steady_clock> total_time_end = std::chrono::steady_clock::now();
+        // total time cost (us)
+        auto total_time_diff = total_time_end - total_time_start;
+        auto total_time_cost = std::chrono::duration_cast<std::chrono::microseconds>(total_time_diff).count();
+        total_time_costs.push_back(total_time_cost);
     }
     keypoints_3d_vec.push_back(cv::Mat::zeros(3, 1, CV_64F));
 
 
-    //** Log **//
+    //**========== Log ==========**//
+    // trajectory
     std::ofstream log_file("output_logs/trajectory.csv");
     log_file << "qw,qx,qy,qz,x,y,z\n";
     for (auto pose : poses) {
@@ -198,6 +280,7 @@ int main(int argc, char** argv) {
                     << position.x() << "," << position.y() << "," << position.z() << "\n";
     }
 
+    // keypoints
     std::ofstream keypoints_file("output_logs/keypoints.csv");
     for (int i = 0; i < keypoints_3d_vec.size(); i++) {
         cv::Mat keypoints = keypoints_3d_vec[i];
@@ -207,9 +290,20 @@ int main(int argc, char** argv) {
         }
     }
 
-    //** Visualize **//
-    Visualizer visualizer;
-    // visualizer.displayPoses(poses);
+    // time cost[us]
+    std::ofstream cost_file("output_logs/time_cost.csv");
+    cost_file << "feature extraction,feature matching,motion estimation,triangulation,scaling,total time\n";
+    for (int i = 0; i < feature_extraction_costs.size(); i++) {
+        cost_file << feature_extraction_costs[i] << "," << feature_matching_costs[i] << "," << motion_estimation_costs[i] << ","
+                    << triangulation_costs[i] << "," << scaling_costs[i] << "," << total_time_costs[i] << "\n";
+    }
+
+    //**========== Visualize ==========**//
+    std::string gt_path = config_file["gt_path"];
+    int display_gt = config_file["display_gt"];  // boolean (1 = true, 0 = false)
+    int is_kitti = config_file["is_kitti"];  // boolean (1 = true, 0 = false)
+    Visualizer visualizer(is_kitti, gt_path);
+    // visualizer.displayPoses(poses, display_gt, gt_path);
     visualizer.displayPoseWithKeypoints(poses, keypoints_3d_vec);
 
 
@@ -228,7 +322,7 @@ void triangulate(cv::Mat cameraMatrix, std::shared_ptr<Frame> &pPrev_frame, std:
         versor[2] = 1;
 
         double disparity = image0_kp_pt.x - image1_kp_pt.x;
-        if (disparity != 0) {
+        if (disparity > 0) {
             bool new_landmark = true;
             // get depth
             double depth = cameraMatrix.at<double>(0, 0) * relative_pose.translation().norm() / disparity;
@@ -268,25 +362,6 @@ void triangulate(cv::Mat cameraMatrix, std::shared_ptr<Frame> &pPrev_frame, std:
     }
 }
 
-// void triangulate(cv::Mat cameraMatrix, std::vector<cv::Point> image0_keypoint_pts, std::vector<cv::Point> image1_keypoint_pts, gtsam::Pose3 relative_pose, std::vector<gtsam::Point3> &frame_keypoints_3d) {
-//     for (int i = 0; i < image0_keypoint_pts.size(); i++) {
-//         cv::Point2f image0_kp_pt = image0_keypoint_pts[i];
-//         cv::Point2f image1_kp_pt = image1_keypoint_pts[i];
-
-//         gtsam::Point3 versor;
-//         versor[0] = (image0_kp_pt.x - cameraMatrix.at<double>(0, 2)) / cameraMatrix.at<double>(0, 0);
-//         versor[1] = (image0_kp_pt.y - cameraMatrix.at<double>(1, 2)) / cameraMatrix.at<double>(0, 0);
-//         versor[2] = 1;
-
-//         double disparity = image0_kp_pt.x - image1_kp_pt.x;
-//         if (disparity != 0) {
-//             double depth = cameraMatrix.at<double>(0, 0) * relative_pose.translation().norm() / disparity;
-//             gtsam::Point3 keypoint_3d = versor * depth;
-//             frame_keypoints_3d.push_back(keypoint_3d);
-//         }
-//     }
-// }
-
 double calcCovisibleLandmarkDistance(const Frame &frame, const std::vector<int> &covisible_feature_idxs) {
     double acc_distance = 0;
 
@@ -318,7 +393,10 @@ double estimateScale(const std::shared_ptr<Frame> &pPrev_frame, const std::share
     }
 
     for (auto pLandmark : pPrev_frame->landmarks_) {
-        if (pLandmark->observations_.find(pCurr_frame->id_) != pLandmark->observations_.end()) {
+        std::shared_ptr<Frame> pBefore_prev_frame = pPrev_frame->pPrevious_frame_.lock();
+        if (pLandmark->observations_.find(pCurr_frame->id_) != pLandmark->observations_.end()  // 현재 프레임에서 관측되는 landmark 이면서
+            && pLandmark->observations_.find(pPrev_frame->id_) != pLandmark->observations_.end()  // 이전 프레임에서 관측되는 landmark 이면서
+            && pLandmark->observations_.find(pBefore_prev_frame->id_) != pLandmark->observations_.end()) {  // 전전 프레임에서 관측되는 landmark
             prev_frame_covisible_feature_idxs.push_back(pLandmark->observations_.find(pPrev_frame->id_)->second);
             curr_frame_covisible_feature_idxs.push_back(pLandmark->observations_.find(pCurr_frame->id_)->second);
 

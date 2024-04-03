@@ -29,3 +29,13 @@ add_executable(visual_odometry
     src/visual_odometry.cpp
     src/visualizer.cpp)
 target_link_libraries(visual_odometry ${OpenCV_LIBS} ${Pangolin_LIBRARIES} gtsam)
+
+add_executable(view_gt
+    src/visualizer.cpp
+    src/view_gt.cpp)
+target_link_libraries(view_gt ${OpenCV_LIBS} ${Pangolin_LIBRARIES} gtsam)
+
+add_executable(view_positions
+    src/visualizer.cpp
+    src/view_positions.cpp)
+target_link_libraries(view_positions ${OpenCV_LIBS} ${Pangolin_LIBRARIES} gtsam)

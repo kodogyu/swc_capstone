@@ -2,7 +2,11 @@
 
 // static definition
 int Frame::total_frame_cnt_ = 0;
-std::shared_ptr<Camera> Frame::pCamera_ = std::make_shared<Camera>();
+
+Frame::Frame() {
+    id_ = total_frame_cnt_++;
+    relative_pose_ = Eigen::Isometry3d::Identity();
+}
 
 void Frame::setKeypoints(const std::vector<cv::KeyPoint> &keypoints, const cv::Mat &descriptors) {
     // init keypoints_
