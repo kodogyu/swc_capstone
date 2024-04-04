@@ -1,0 +1,129 @@
+#include "optimizer.hpp"
+
+LocalOptimizer::LocalOptimizer() {
+    // create a graph
+    gtsam::NonlinearFactorGraph graph_;
+
+}
+
+void LocalOptimizer::optimizeFrames(std::vector<std::shared_ptr<Frame>> &frames, bool verbose) {
+    // create a graph
+    gtsam::NonlinearFactorGraph graph;
+
+    // stereo camera calibration object
+    gtsam::Cal3_S2::shared_ptr K(
+        new gtsam::Cal3_S2(frames[0]->pCamera_->fx_,
+                                frames[0]->pCamera_->fy_,
+                                frames[0]->pCamera_->s_,
+                                frames[0]->pCamera_->cx_,
+                                frames[0]->pCamera_->cy_));
+
+    // create initial values
+    gtsam::Values initial_estimates;
+
+    // 1. Add Values and Factors
+    const auto measurement_noise = gtsam::noiseModel::Isotropic::Sigma(2, 1.0);  // std of 1px.
+    // // insert values and factors of the frames
+    // for (int i = 0; i < frames.size(); i++) {
+    //     std::shared_ptr<Frame> pFrame = frames[i];
+    //     gtsam::Pose3 frame_pose = gtsam::Pose3(gtsam::Rot3(pFrame->pose_.rotation()), gtsam::Point3(pFrame->pose_.translation()));
+    //     // insert initial value
+    //     initial_estimates.insert(gtsam::Symbol('x', pFrame->id_), frame_pose);
+
+    //     // smart factor
+    //     gtsam::SmartProjectionPoseFactor<gtsam::Cal3_S2>::shared_ptr factor(new gtsam::SmartProjectionPoseFactor<gtsam::Cal3_S2>(measurement_noise, K));
+    //     for (int j = 0; j < pFrame->landmarks_.size(); j++) {
+    //         // 2D measurement
+    //         gtsam::PinholePose<gtsam::Cal3_S2> camera(frame_pose, K);
+    //         gtsam::Point2 measurement = camera.project(pFrame->landmarks_[j]->point_3d_);
+    //         // add measurement factor
+    //         factor->add(measurement, gtsam::Symbol('x', pFrame->id_));
+    //     }
+    //     graph.push_back(factor);
+    // }
+
+
+    // insert values and factors of the frames
+    std::vector<int> frame_pose_map;  // frame_pose_map[pose_idx] = frame_id
+    std::vector<int> landmark_idx_id_map;  // landmark_map[landmark_idx] = landmark_id
+    std::map<int, int> landmark_id_idx_map;  // landmark_map[landmark_id] = landmark_idx
+
+    int landmark_idx = 0;
+    int landmarks_cnt = 0;
+    for (int frame_idx = 0; frame_idx < frames.size(); frame_idx++) {
+        std::shared_ptr<Frame> pFrame = frames[frame_idx];
+        gtsam::Pose3 frame_pose = gtsam::Pose3(gtsam::Rot3(pFrame->pose_.rotation()), gtsam::Point3(pFrame->pose_.translation()));
+        // insert initial value of the frame pose
+        initial_estimates.insert(gtsam::Symbol('x', frame_idx), frame_pose);
+
+        for (const auto pLandmark : pFrame->landmarks_) {
+            // insert initial value of the landmark
+            std::map<int, int>::iterator landmark_map_itr = landmark_id_idx_map.find(pLandmark->id_);
+            if (landmark_map_itr == landmark_id_idx_map.end()) {  // new landmark
+                landmark_idx = landmarks_cnt;
+
+                initial_estimates.insert<gtsam::Point3>(gtsam::Symbol('l', landmark_idx), gtsam::Point3(pLandmark->point_3d_));
+                landmark_idx_id_map.push_back(pLandmark->id_);
+                landmark_id_idx_map[pLandmark->id_] = landmark_idx;
+
+                landmarks_cnt++;
+            }
+            else {
+                landmark_idx = landmark_map_itr->second;
+            }
+            // 2D measurement
+            cv::Point2f measurement_cv = pFrame->keypoints_[pLandmark->observations_.find(pFrame->id_)->second].pt;
+            gtsam::Point2 measurement(measurement_cv.x, measurement_cv.y);
+            // add measurement factor
+            graph.emplace_shared<gtsam::GenericProjectionFactor<gtsam::Pose3, gtsam::Point3, gtsam::Cal3_S2>>(measurement, measurement_noise,
+                                                                                                            gtsam::Symbol('x', frame_idx), gtsam::Symbol('l', landmark_idx),
+                                                                                                            K);
+        }
+    }
+
+
+    // 2. prior factors
+    gtsam::Pose3 first_pose = gtsam::Pose3(gtsam::Rot3(frames[0]->pose_.rotation()), gtsam::Point3(frames[0]->pose_.translation()));
+    gtsam::Pose3 second_pose = gtsam::Pose3(gtsam::Rot3(frames[1]->pose_.rotation()), gtsam::Point3(frames[1]->pose_.translation()));
+    // add a prior on the first pose
+    const auto pose_noise = gtsam::noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << gtsam::Vector3::Constant(0.3), gtsam::Vector3::Constant(0.1)).finished());  // std of 0.3m for x,y,z, 0.1rad for r,p,y
+    graph.addPrior(gtsam::Symbol('x', 0), first_pose, pose_noise);
+    // add a prior on the second pose (for scale)
+    graph.addPrior(gtsam::Symbol('x', 1), second_pose, pose_noise);
+    // // add a prior on the first landmark (for scale)
+    // auto point_noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.1);
+    // graph.addPrior(gtsam::Symbol('l', 0), frames[0]->landmarks_[0]->point_3d_, point_noise);
+
+    // 3. Optimize
+    gtsam::LevenbergMarquardtOptimizer optimizer(graph, initial_estimates);
+    // start timer [optimization]
+    const std::chrono::time_point<std::chrono::steady_clock> optimization_start = std::chrono::steady_clock::now();
+    gtsam::Values result = optimizer.optimize();
+    // end timer [optimization]
+    const std::chrono::time_point<std::chrono::steady_clock> optimization_end = std::chrono::steady_clock::now();
+    auto optimization_diff = optimization_end - optimization_end;
+    std::cout << "GTSAM Optimization elapsed time: "
+                << std::chrono::duration_cast<std::chrono::milliseconds>(optimization_diff).count() << "[ms]" << std::endl;
+
+    // 4. Recover result pose
+    for (int frame_idx = 0; frame_idx < frames.size(); frame_idx++) {
+        std::shared_ptr<Frame> pFrame = frames[frame_idx];
+        pFrame->pose_ = result.at<gtsam::Pose3>(gtsam::Symbol('x', frame_idx)).matrix();
+
+        std::shared_ptr<Frame> pPrev_frame = pFrame->pPrevious_frame_.lock();
+        pFrame->relative_pose_ = pPrev_frame->pose_.inverse() * pFrame->pose_;
+
+        // Recover Landmark point
+        for (int j = 0; j < pFrame->landmarks_.size(); j++) {
+            std::shared_ptr<Landmark> pLandmark = pFrame->landmarks_[j];
+            std::map<int, int>::iterator landmark_map_itr = landmark_id_idx_map.find(pLandmark->id_);
+            if (landmark_map_itr != landmark_id_idx_map.end()) {
+                pLandmark->point_3d_ = result.at<gtsam::Point3>(gtsam::Symbol('l', landmark_map_itr->second));
+            }
+        }
+    }
+    if (verbose) {
+        graph.print("graph print:\n");
+        result.print("optimization result:\n");
+    }
+}

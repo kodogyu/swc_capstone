@@ -16,7 +16,8 @@ public:
     cv::Mat descriptors_;
     std::vector<double> depths_;
     std::vector<Eigen::Vector3d> keypoints_3d_;
-    gtsam::Pose3 pose_;  // pose in world frame
+    // gtsam::Pose3 pose_;  // pose in world frame
+    Eigen::Isometry3d pose_;  // pose in world frame
     Eigen::Isometry3d relative_pose_;  // relative pose between current and previous frame
 
     // landmark related

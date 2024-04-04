@@ -10,5 +10,6 @@ public:
 
     int id_;
     std::map<int, int> observations_;  // observations.find(curr_frame.id_) = std::map::itr(curr_frame.id_, keypoint_idx)
-    gtsam::Point3 point_3d_;  // 3D coordinate at corresponding pose
+    // gtsam::Point3 point_3d_;  // 3D coordinate at corresponding pose
+    Eigen::Vector3d point_3d_;  // 3D coordinate at corresponding pose
 };

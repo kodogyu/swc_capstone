@@ -1,7 +1,7 @@
 %YAML:1.0
 
 #========== Dataset ==========#
-num_frames: 10
+num_frames: 5
 
 # # KITTI-360
 # is_kitti: 0
@@ -42,3 +42,8 @@ display_gt: 1
 
 # KITTI
 gt_path: /home/kodogyu/Datasets/KITTI/dataset/poses/00.txt
+
+
+#========== Optimization ==========#
+window_size: 2
+optimizer_verbose: 0

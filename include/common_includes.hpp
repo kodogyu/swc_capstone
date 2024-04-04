@@ -4,4 +4,6 @@
 
 #include <opencv2/opencv.hpp>
 
-#include <gtsam/geometry/Pose3.h>
+#include <Eigen/Dense>
+
+// #include <gtsam/geometry/Pose3.h>

@@ -5,6 +5,8 @@ int Frame::total_frame_cnt_ = 0;
 
 Frame::Frame() {
     id_ = total_frame_cnt_++;
+
+    pose_ = Eigen::Isometry3d::Identity();
     relative_pose_ = Eigen::Isometry3d::Identity();
 }
 

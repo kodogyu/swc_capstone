@@ -18,10 +18,14 @@
 #include "frame.hpp"
 #include "landmark.hpp"
 #include "visualizer.hpp"
+#include "optimizer.hpp"
 
-void triangulate(cv::Mat cameraMatrix, std::shared_ptr<Frame> &pPrev_frame, std::shared_ptr<Frame> &pCurr_frame, std::vector<cv::DMatch> good_matches, gtsam::Pose3 relative_pose, std::vector<gtsam::Point3> &frame_keypoints_3d);
+void triangulate(cv::Mat cameraMatrix, std::shared_ptr<Frame> &pPrev_frame, std::shared_ptr<Frame> &pCurr_frame, std::vector<cv::DMatch> good_matches, Eigen::Isometry3d relative_pose, std::vector<gtsam::Point3> &frame_keypoints_3d);
+void triangulate2(cv::Mat cameraMatrix, std::shared_ptr<Frame> &pPrev_frame, std::shared_ptr<Frame> &pCurr_frame, const std::vector<cv::DMatch> good_matches, const cv::Mat &mask, std::vector<Eigen::Vector3d> &frame_keypoints_3d);
 double estimateScale(const std::shared_ptr<Frame> &pPrev_frame, const std::shared_ptr<Frame> &pCurr_frame, std::vector<int> &scale_mask);
 void applyScale(std::shared_ptr<Frame> &pFrame, const double scale_ratio, const std::vector<int> &scale_mask);
+double getGTScale(std::shared_ptr<Frame> pFrame);
+void getGTScales(const std::string gt_path, bool is_kitti, int num_frames, std::vector<double> &gt_scales);
 
 int main(int argc, char** argv) {
     std::cout << CV_VERSION << std::endl;
@@ -58,9 +62,15 @@ int main(int argc, char** argv) {
     double cy = config_file["cy"];
     std::shared_ptr<Camera> camera = std::make_shared<Camera>(fx, fy, s, cx, cy);
 
-    gtsam::Pose3 relative_pose;
+    // local optimization
+    int window_size = config_file["window_size"];
+    bool optimizer_verbose = static_cast<bool>(static_cast<int>(config_file["optimizer_verbose"]));
+    LocalOptimizer optimizer;
+
+    Eigen::Isometry3d relative_pose;
     std::vector<std::shared_ptr<Frame>> frames;
-    std::vector<gtsam::Pose3> poses;
+    std::vector<std::shared_ptr<Frame>> frame_window;
+    std::vector<Eigen::Isometry3d> poses;
     std::vector<double> scales;
     std::vector<int64_t> feature_extraction_costs;
     std::vector<int64_t> feature_matching_costs;
@@ -73,7 +83,7 @@ int main(int argc, char** argv) {
     //**========== 0. Image load ==========**//
     // read images
     image0_left = cv::imread(left_image_entries[0], cv::IMREAD_GRAYSCALE);
-    poses.push_back(gtsam::Pose3());
+    poses.push_back(Eigen::Isometry3d::Identity());
     std::shared_ptr<Frame> pPrev_frame = std::make_shared<Frame>();
     pPrev_frame->image_ = image0_left;
     pPrev_frame->pCamera_ = camera;
@@ -201,11 +211,10 @@ int main(int argc, char** argv) {
         cv::cv2eigen(t, translation_mat);
         gtsam::Rot3 rotation = gtsam::Rot3(rotation_mat);
         gtsam::Point3 translation = gtsam::Point3(translation_mat);
-        relative_pose = gtsam::Pose3(rotation, translation);
-        Eigen::Isometry3d relative_pose_eigen;
-        relative_pose_eigen.linear() = rotation_mat;
-        relative_pose_eigen.translation() = translation_mat;
-        pCurr_frame->relative_pose_ = relative_pose_eigen;
+        // relative_pose = gtsam::Pose3(gtsam::Rot3(rotation_mat), gtsam::Point3(translation_mat));
+        relative_pose.linear() = rotation_mat;
+        relative_pose.translation() = translation_mat;
+        pCurr_frame->relative_pose_ = relative_pose;
         pCurr_frame->pose_ = pPrev_frame->pose_ * relative_pose;
         poses.push_back(poses[i - 1] * relative_pose);
 
@@ -221,7 +230,8 @@ int main(int argc, char** argv) {
         std::chrono::time_point<std::chrono::steady_clock> triangulation_start = std::chrono::steady_clock::now();
 
         std::vector<Eigen::Vector3d> keypoints_3d;
-        triangulate(camera->intrinsic_, pPrev_frame, pCurr_frame, good_matches, relative_pose, keypoints_3d);
+        // triangulate(camera->intrinsic_, pPrev_frame, pCurr_frame, good_matches, relative_pose, keypoints_3d);
+        triangulate2(camera->intrinsic_, pPrev_frame, pCurr_frame, good_matches, mask, keypoints_3d);
         pPrev_frame->keypoints_3d_ = keypoints_3d;
 
         // end timer [triangulation]
@@ -235,8 +245,10 @@ int main(int argc, char** argv) {
         // start timer [scaling]
         std::chrono::time_point<std::chrono::steady_clock> scaling_start = std::chrono::steady_clock::now();
 
-        // std::vector<int> scale_mask(pCurr_frame->keypoints_.size(), 0);
-        // double scale_ratio = estimateScale(pPrev_frame, pCurr_frame, scale_mask);
+        // std::vector<int> scale_mask(pCurr_frame->keypoints_.size(), 1);
+        // // double scale_ratio = estimateScale(pPrev_frame, pCurr_frame, scale_mask);
+        // std::cout << "get GT scale" << std::endl;
+        // double scale_ratio = getGTScale(pCurr_frame);
         // scales.push_back(scale_ratio);
         // applyScale(pCurr_frame, scale_ratio, scale_mask);
 
@@ -254,6 +266,15 @@ int main(int argc, char** argv) {
             keypoints_3d_mat.at<double>(2, i) = pPrev_frame->keypoints_3d_[i].z();
         }
         keypoints_3d_vec.push_back(keypoints_3d_mat);
+
+        //**========== 6. Local optimization ==========**//
+        frame_window.push_back(pCurr_frame);
+        if (frame_window.size() > window_size) {
+            frame_window.erase(frame_window.begin());
+        }
+        if (frame_window.size() == window_size) {
+            optimizer.optimizeFrames(frame_window, optimizer_verbose);
+        }
 
         // move on
         frames.push_back(pPrev_frame);
@@ -274,7 +295,7 @@ int main(int argc, char** argv) {
     std::ofstream log_file("output_logs/trajectory.csv");
     log_file << "qw,qx,qy,qz,x,y,z\n";
     for (auto pose : poses) {
-        Eigen::Quaternion quaternion = pose.rotation().toQuaternion();
+        Eigen::Quaterniond quaternion(pose.rotation());
         Eigen::Vector3d position = pose.translation();
         log_file << quaternion.w() << "," << quaternion.x() << "," << quaternion.y() << "," << quaternion.z() << ","
                     << position.x() << "," << position.y() << "," << position.z() << "\n";
@@ -292,25 +313,36 @@ int main(int argc, char** argv) {
 
     // time cost[us]
     std::ofstream cost_file("output_logs/time_cost.csv");
-    cost_file << "feature extraction,feature matching,motion estimation,triangulation,scaling,total time\n";
+    cost_file << "feature extraction(us),feature matching(us),motion estimation(us),triangulation(us),scaling(us),total time(us)\n";
     for (int i = 0; i < feature_extraction_costs.size(); i++) {
         cost_file << feature_extraction_costs[i] << "," << feature_matching_costs[i] << "," << motion_estimation_costs[i] << ","
                     << triangulation_costs[i] << "," << scaling_costs[i] << "," << total_time_costs[i] << "\n";
     }
 
-    //**========== Visualize ==========**//
+    // scales
     std::string gt_path = config_file["gt_path"];
-    int display_gt = config_file["display_gt"];  // boolean (1 = true, 0 = false)
-    int is_kitti = config_file["is_kitti"];  // boolean (1 = true, 0 = false)
+    bool is_kitti = static_cast<bool>(static_cast<int>(config_file["is_kitti"]));  // boolean (1 = true, 0 = false)
+    std::vector<double> gt_scales;
+    getGTScales(gt_path, is_kitti, num_frames, gt_scales);
+
+    std::ofstream scale_file("output_logs/scales.csv");
+    scale_file << "estimated scale,GT scale\n";
+    for (int i = 0; i < scales.size(); i++) {
+        scale_file << scales[i] << "," << gt_scales[i] << "\n";
+    }
+
+    //**========== Visualize ==========**//
+    bool display_gt = static_cast<bool>(static_cast<int>(config_file["display_gt"]));;  // boolean (1 = true, 0 = false)
     Visualizer visualizer(is_kitti, gt_path);
     // visualizer.displayPoses(poses, display_gt, gt_path);
-    visualizer.displayPoseWithKeypoints(poses, keypoints_3d_vec);
+    // visualizer.displayPoseWithKeypoints(poses, keypoints_3d_vec);
+    visualizer.displayFramesAndLandmarks(frames);
 
 
     return 0;
 }
 
-void triangulate(cv::Mat cameraMatrix, std::shared_ptr<Frame> &pPrev_frame, std::shared_ptr<Frame> &pCurr_frame, std::vector<cv::DMatch> good_matches, gtsam::Pose3 relative_pose, std::vector<Eigen::Vector3d> &frame_keypoints_3d) {
+void triangulate(cv::Mat cameraMatrix, std::shared_ptr<Frame> &pPrev_frame, std::shared_ptr<Frame> &pCurr_frame, std::vector<cv::DMatch> good_matches, Eigen::Isometry3d relative_pose, std::vector<Eigen::Vector3d> &frame_keypoints_3d) {
 
     for (int i = 0; i < good_matches.size(); i++) {  // i = corresponding keypoint index
         cv::Point2f image0_kp_pt = pPrev_frame->keypoints_[good_matches[i].queryIdx].pt;
@@ -361,6 +393,64 @@ void triangulate(cv::Mat cameraMatrix, std::shared_ptr<Frame> &pPrev_frame, std:
         }
     }
 }
+
+void triangulate2(cv::Mat cameraMatrix, std::shared_ptr<Frame> &pPrev_frame, std::shared_ptr<Frame> &pCurr_frame, const std::vector<cv::DMatch> good_matches, const cv::Mat &mask, std::vector<Eigen::Vector3d> &frame_keypoints_3d) {
+    Eigen::Matrix3d camera_intrinsic;
+    Eigen::MatrixXd prev_proj(3, 4);
+    Eigen::MatrixXd curr_proj(3, 4);
+
+    cv::cv2eigen(pPrev_frame->pCamera_->intrinsic_, camera_intrinsic);
+    prev_proj = camera_intrinsic * pPrev_frame->pose_.matrix().inverse().block<3, 4>(0, 0);
+    curr_proj = camera_intrinsic * pCurr_frame->pose_.matrix().inverse().block<3, 4>(0, 0);
+
+    for (int i = 0; i < good_matches.size(); i++) {
+        if (mask.at<unsigned char>(i) == 1) {
+            bool new_landmark = true;
+            cv::KeyPoint prev_frame_kp = pPrev_frame->keypoints_[good_matches[i].queryIdx];
+            cv::KeyPoint curr_frame_kp = pCurr_frame->keypoints_[good_matches[i].trainIdx];
+
+            Eigen::Matrix4d A;
+            A.row(0) = prev_frame_kp.pt.x * prev_proj.row(2) - prev_proj.row(0);
+            A.row(1) = prev_frame_kp.pt.y * prev_proj.row(2) - prev_proj.row(1);
+            A.row(2) = curr_frame_kp.pt.x * curr_proj.row(2) - curr_proj.row(0);
+            A.row(3) = curr_frame_kp.pt.y * curr_proj.row(2) - curr_proj.row(1);
+
+            Eigen::JacobiSVD<Eigen::Matrix4d> svd(A, Eigen::ComputeFullU | Eigen::ComputeFullV);
+            Eigen::Vector4d point_3d_homo = svd.matrixV().col(3);
+            Eigen::Vector3d point_3d = point_3d_homo.head(3) / point_3d_homo[3];
+            frame_keypoints_3d.push_back(point_3d);
+
+            Eigen::Vector3d w_keypoint_3d = point_3d;  // keypoint coordinate in world frame
+            if (pPrev_frame->keypoint_landmark_[good_matches[i].queryIdx].second != -1) {
+                new_landmark = false;
+            }
+
+            if (new_landmark) {
+                std::shared_ptr<Landmark> pLandmark = std::make_shared<Landmark>();
+                pLandmark->observations_.insert({pPrev_frame->id_, good_matches[i].queryIdx});
+                pLandmark->observations_.insert({pCurr_frame->id_, good_matches[i].trainIdx});
+                pLandmark->point_3d_ = w_keypoint_3d;
+
+                pPrev_frame->landmarks_.push_back(pLandmark);
+                pPrev_frame->keypoint_landmark_[good_matches[i].queryIdx] = std::pair(pPrev_frame->landmarks_.size() - 1, pLandmark->id_);
+                pCurr_frame->landmarks_.push_back(pLandmark);
+                pCurr_frame->keypoint_landmark_[good_matches[i].trainIdx] = std::pair(pCurr_frame->landmarks_.size() - 1, pLandmark->id_);
+            }
+            else {
+                // add information to curr_frame
+                std::pair<int, int> prev_frame_kp_lm = pPrev_frame->keypoint_landmark_[good_matches[i].queryIdx];
+                int landmark_id = prev_frame_kp_lm.second;
+                pCurr_frame->landmarks_.push_back(pPrev_frame->landmarks_[prev_frame_kp_lm.first]);
+                pCurr_frame->keypoint_landmark_[good_matches[i].trainIdx] = std::pair(pCurr_frame->landmarks_.size(), landmark_id);
+
+                // add information to the landmark
+                std::shared_ptr<Landmark> pLandmark = pPrev_frame->landmarks_[prev_frame_kp_lm.first];
+                pLandmark->observations_.insert({pCurr_frame->id_, good_matches[i].trainIdx});
+            }
+        }
+    }
+}
+
 
 double calcCovisibleLandmarkDistance(const Frame &frame, const std::vector<int> &covisible_feature_idxs) {
     double acc_distance = 0;
@@ -424,7 +514,7 @@ void applyScale(std::shared_ptr<Frame> &pFrame, const double scale_ratio, const 
             Eigen::Isometry3d prev_pose(pFrame->pose_.matrix());
             prev_pose = Eigen::Isometry3d(pFrame->pose_.matrix()) * relative_pose_old.inverse();
             Eigen::Isometry3d scaled_pose = prev_pose * pFrame->relative_pose_;  // apply scale
-            pFrame->pose_ = gtsam::Pose3(gtsam::Rot3(scaled_pose.rotation()), gtsam::Point3(scaled_pose.translation()));
+            pFrame->pose_ = scaled_pose;
 
             // feature_3d
             Eigen::Vector3d feature_versor;
@@ -440,4 +530,93 @@ void applyScale(std::shared_ptr<Frame> &pFrame, const double scale_ratio, const 
     }
 }
 
+double getGTScale(std::shared_ptr<Frame> pFrame) {
+    std::cout << "GT scale function" << std::endl;
 
+    if (pFrame->id_ == 1) {
+        return 1.0;
+    }
+
+    std::cout << "reading file" << std::endl;
+    std::ifstream gt_poses_file("/home/kodogyu/Datasets/KITTI/dataset/poses/00.txt");
+    std::cout << "reading file done" << std::endl;
+    std::string line;
+    double r11, r12, r13, r21, r22, r23, r31, r32, r33, t1, t2, t3;
+    int curr_id = pFrame->id_;
+    int prev_id = curr_id - 1;
+    int pprev_id = curr_id - 2;
+    Eigen::Vector3d pprev_position, prev_position, curr_position;
+
+    for (int i = 0; i < pFrame->id_; i++) {
+        std::getline(gt_poses_file, line);
+        std::stringstream ssline(line);
+
+        // KITTI format
+        ssline
+            >> r11 >> r12 >> r13 >> t1
+            >> r21 >> r22 >> r23 >> t2
+            >> r31 >> r32 >> r33 >> t3;
+
+        if (i == pprev_id) {
+            pprev_position << t1, t2, t3;
+            std::cout << "pprev position: " << pprev_position << std::endl;
+        }
+        else if (i == prev_id) {
+            prev_position << t1, t2, t3;
+            std::cout << "prev position: " << prev_position << std::endl;
+        }
+        else if (i == curr_id) {
+            curr_position << t1, t2, t3;
+            std::cout << "curr position: " << curr_position << std::endl;
+        }
+    }
+
+    double gt_scale = (curr_position - prev_position).norm() / (prev_position - pprev_position).norm();
+    return gt_scale;
+}
+
+void getGTScales(const std::string gt_path, bool is_kitti, int num_frames, std::vector<double> &gt_scales) {
+    std::ifstream gt_poses_file(gt_path);
+    int no_frame;
+    double r11, r12, r13, r21, r22, r23, r31, r32, r33, t1, t2, t3;
+    std::string line;
+    Eigen::Vector3d prev_position, curr_position;
+    double prev_trans_length;
+    double trans_length;
+    double scale;
+
+    for (int i = 0; i < num_frames; i++) {
+        std::getline(gt_poses_file, line);
+        std::stringstream ssline(line);
+        if (is_kitti) {
+            ssline
+                >> r11 >> r12 >> r13 >> t1
+                >> r21 >> r22 >> r23 >> t2
+                >> r31 >> r32 >> r33 >> t3;
+        }
+        else {
+            ssline >> no_frame
+                    >> r11 >> r12 >> r13 >> t1
+                    >> r21 >> r22 >> r23 >> t2
+                    >> r31 >> r32 >> r33 >> t3;
+        }
+
+        curr_position << t1, t2, t3;
+
+        if (i == 0) {
+            prev_position = curr_position;
+            continue;
+        }
+        else if (i == 1) {
+            scale = 1.0;
+        }
+        else {
+            trans_length = (curr_position - prev_position).norm();
+            scale = trans_length / prev_trans_length;
+        }
+        gt_scales.push_back(scale);
+
+        prev_position = curr_position;
+        prev_trans_length = trans_length;
+    }
+}
