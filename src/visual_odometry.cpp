@@ -67,6 +67,10 @@ int main(int argc, char** argv) {
     bool optimizer_verbose = static_cast<bool>(static_cast<int>(config_file["optimizer_verbose"]));
     LocalOptimizer optimizer;
 
+    // feature extractor
+    int num_features = config_file["num_features"];
+    cv::Ptr<cv::ORB> orb = cv::ORB::create(num_features, 1.2, 8, 31, 0, 2, cv::ORB::HARRIS_SCORE, 31, 25);
+
     Eigen::Isometry3d relative_pose;
     std::vector<std::shared_ptr<Frame>> frames;
     std::vector<std::shared_ptr<Frame>> frame_window;
@@ -105,8 +109,6 @@ int main(int argc, char** argv) {
 
         cv::Mat curr_image_descriptors;
         std::vector<cv::KeyPoint> curr_image_keypoints;
-        // create orb feature extractor
-        cv::Ptr<cv::ORB> orb = cv::ORB::create(5000, 1.2, 8, 31, 0, 2, cv::ORB::FAST_SCORE, 31, 25);
 
         if (i == 1) {  // first run
             cv::Mat prev_image_descriptors;
@@ -273,7 +275,7 @@ int main(int argc, char** argv) {
             frame_window.erase(frame_window.begin());
         }
         if (frame_window.size() == window_size) {
-            optimizer.optimizeFrames(frame_window, optimizer_verbose);
+            // optimizer.optimizeFrames(frame_window, optimizer_verbose);
         }
 
         // move on
