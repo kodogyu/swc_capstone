@@ -319,8 +319,8 @@ void Visualizer::drawPositions(const std::vector<std::pair<int, int>> &positions
     }
 }
 
-void Visualizer::displayFramesAndLandmarks(const std::vector<std::shared_ptr<Frame>> &frames) {
-    pangolin::CreateWindowAndBind("Visual Odometry Example", 1024, 768);
+void Visualizer::displayFramesAndLandmarks(const std::vector<std::shared_ptr<Frame>> &frames, const bool display_gt, const std::string gt_path) {
+    pangolin::CreateWindowAndBind("Visual Odometry Viewer", 1024, 768);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -343,6 +343,9 @@ void Visualizer::displayFramesAndLandmarks(const std::vector<std::shared_ptr<Fra
     const float navy[3] = {0, 0.02, 1};
     const float purple[3] = {0.5, 0, 1};
     std::vector<const float*> colors {red, orange, yellow, green, blue, navy, purple};
+
+    std::vector<Eigen::Isometry3d> gt_poses;
+    loadGT(gt_path, gt_poses);
 
     while (!pangolin::ShouldQuit()) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -407,6 +410,9 @@ void Visualizer::displayFramesAndLandmarks(const std::vector<std::shared_ptr<Fra
             color_idx = color_idx % colors.size();
         }
 
+        if (display_gt) {
+            drawGT(gt_poses);
+        }
         pangolin::FinishFrame();
     }
 }

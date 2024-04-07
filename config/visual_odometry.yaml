@@ -1,7 +1,7 @@
 %YAML:1.0
 
 #========== Dataset ==========#
-num_frames: 30
+num_frames: 100
 
 # # KITTI-360
 # is_kitti: 0
@@ -36,6 +36,10 @@ cy: 185.2157
 
 #========== Visualize ==========#
 display_gt: 1
+# display_type
+#   0: pose only
+#   1: pose & landmarks
+display_type: 0
 
 # # KITTI-360
 # gt_path: /home/kodogyu/Datasets/KITTI-360/data_poses/2013_05_28_drive_0000_sync/cam0_to_world.txt
@@ -46,6 +50,11 @@ gt_path: /home/kodogyu/Datasets/KITTI/dataset/poses/00.txt
 #========== Feature extraction ==========#
 num_features: 3000
 
+#========== Feature matching ==========#
+des_dist_thresh: 0.5
+
+
 #========== Optimization ==========#
-window_size: 2
+do_optimize: 1
+window_size: 7
 optimizer_verbose: 0
