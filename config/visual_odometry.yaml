@@ -1,7 +1,7 @@
 %YAML:1.0
 
 #========== Dataset ==========#
-num_frames: 100
+num_frames: 10
 
 # # KITTI-360
 # is_kitti: 0
@@ -51,10 +51,10 @@ gt_path: /home/kodogyu/Datasets/KITTI/dataset/poses/00.txt
 num_features: 3000
 
 #========== Feature matching ==========#
-des_dist_thresh: 0.5
+des_dist_thresh: 0.7
 
 
 #========== Optimization ==========#
-do_optimize: 1
-window_size: 7
+do_optimize: 0
+window_size: 2
 optimizer_verbose: 0

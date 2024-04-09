@@ -19,6 +19,10 @@
 #include "landmark.hpp"
 #include "visualizer.hpp"
 #include "optimizer.hpp"
+#include "config.hpp"
+#include "utils.hpp"
+#include "logger.hpp"
+
 
 void triangulate(cv::Mat cameraMatrix, std::shared_ptr<Frame> &pPrev_frame, std::shared_ptr<Frame> &pCurr_frame, std::vector<cv::DMatch> good_matches, Eigen::Isometry3d relative_pose, std::vector<gtsam::Point3> &frame_keypoints_3d);
 void triangulate2(cv::Mat cameraMatrix, std::shared_ptr<Frame> &pPrev_frame, std::shared_ptr<Frame> &pCurr_frame, const std::vector<cv::DMatch> good_matches, const cv::Mat &mask, std::vector<Eigen::Vector3d> &frame_keypoints_3d);
@@ -26,12 +30,6 @@ double estimateScale(const std::shared_ptr<Frame> &pPrev_frame, const std::share
 void applyScale(std::shared_ptr<Frame> &pFrame, const double scale_ratio, const std::vector<int> &scale_mask);
 double getGTScale(std::shared_ptr<Frame> pFrame);
 void getGTScales(const std::string gt_path, bool is_kitti, int num_frames, std::vector<double> &gt_scales);
-void drawFramesLandmarks(const std::vector<std::shared_ptr<Frame>> &frames);
-void drawReprojectedLandmarks(const std::vector<std::shared_ptr<Frame>> &frames);
-std::vector<Eigen::Isometry3d> calcRPE(const std::string gt_path, const std::vector<std::shared_ptr<Frame>> &frames);
-void calcRPE_rt(const std::string gt_path, const std::vector<std::shared_ptr<Frame>> &frames, double &_rpe_rot, double &_rpe_trans);
-void loadGT(std::string gt_path, std::vector<Eigen::Isometry3d> &_gt_poses);
-double calcReprojectionError(const std::vector<std::shared_ptr<Frame>> &frames);
 
 int main(int argc, char** argv) {
     std::cout << CV_VERSION << std::endl;
@@ -41,53 +39,21 @@ int main(int argc, char** argv) {
     }
 
     //**========== Parse config file ==========**//
-    std::vector<cv::Mat> keypoints_3d_vec;
+    Configuration config(argv[1]);
+    config.parse();
 
-    cv::FileStorage config_file(argv[1], cv::FileStorage::READ);
-    int num_frames = config_file["num_frames"];
-    std::vector<std::string> left_image_entries;
-    std::filesystem::path left_images_dir(config_file["left_images_dir"]);
-    std::filesystem::directory_iterator left_images_itr(left_images_dir);
-
-    // this reads all image entries. Therefore length of the image entry vector may larger than the 'num_frames'
-    while (left_images_itr != std::filesystem::end(left_images_itr)) {
-        const std::filesystem::directory_entry left_image_entry = *left_images_itr;
-
-        left_image_entries.push_back(left_image_entry.path());
-
-        left_images_itr++;
-    }
-    // sort entry vectors
-    std::sort(left_image_entries.begin(), left_image_entries.end());
-
-    // camera
-    double fx = config_file["fx"];
-    double fy = config_file["fy"];
-    double s = config_file["s"];
-    double cx = config_file["cx"];
-    double cy = config_file["cy"];
-    std::shared_ptr<Camera> camera = std::make_shared<Camera>(fx, fy, s, cx, cy);
-
-    // local optimization
-    bool do_optimize = static_cast<bool>(static_cast<int>(config_file["do_optimize"]));
-    int window_size = config_file["window_size"];
-    bool optimizer_verbose = static_cast<bool>(static_cast<int>(config_file["optimizer_verbose"]));
+    //**========== Initialize variables ==========**//
+    Utils utils;
+    std::shared_ptr<Camera> camera = std::make_shared<Camera>(config.fx_, config.fy_, config.s_, config.cx_, config.cy_);
     LocalOptimizer optimizer;
+    cv::Ptr<cv::ORB> orb = cv::ORB::create(config.num_features_, 1.2, 8, 31, 0, 2, cv::ORB::HARRIS_SCORE, 31, 25);
 
-    // feature extractor
-    int num_features = config_file["num_features"];
-    cv::Ptr<cv::ORB> orb = cv::ORB::create(num_features, 1.2, 8, 31, 0, 2, cv::ORB::HARRIS_SCORE, 31, 25);
-
-    // feature matcher
-    double des_dist_thresh = config_file["des_dist_thresh"];
-
-    // visualizer
-    int display_type = config_file["display_type"];  // 0: pose only, 1: pose & landmarks
-
+    std::vector<cv::Mat> keypoints_3d_vec;
     Eigen::Isometry3d relative_pose;
     std::vector<std::shared_ptr<Frame>> frames;
     std::vector<std::shared_ptr<Frame>> frame_window;
     std::vector<Eigen::Isometry3d> poses;
+    std::vector<Eigen::Isometry3d> relative_poses;
     std::vector<double> scales;
     std::vector<int64_t> feature_extraction_costs;
     std::vector<int64_t> feature_matching_costs;
@@ -99,18 +65,18 @@ int main(int argc, char** argv) {
 
     //**========== 0. Image load ==========**//
     // read images
-    image0_left = cv::imread(left_image_entries[0], cv::IMREAD_GRAYSCALE);
+    image0_left = cv::imread(config.left_image_entries_[0], cv::IMREAD_GRAYSCALE);
     poses.push_back(Eigen::Isometry3d::Identity());
     std::shared_ptr<Frame> pPrev_frame = std::make_shared<Frame>();
     pPrev_frame->image_ = image0_left;
     pPrev_frame->pCamera_ = camera;
     frames.push_back(pPrev_frame);
 
-    for (int i = 1; i < num_frames; i++) {
+    for (int i = 1; i < config.num_frames_; i++) {
         // start timer [total time cost]
         std::chrono::time_point<std::chrono::steady_clock> total_time_start = std::chrono::steady_clock::now();
 
-        image1_left = cv::imread(left_image_entries[i], cv::IMREAD_GRAYSCALE);
+        image1_left = cv::imread(config.left_image_entries_[i], cv::IMREAD_GRAYSCALE);
         // new Frame!
         std::shared_ptr<Frame> pCurr_frame = std::make_shared<Frame>();
         pCurr_frame->image_ = image1_left;
@@ -157,9 +123,9 @@ int main(int argc, char** argv) {
 
         std::vector<cv::DMatch> good_matches;  // good matchings
         for (int i = 0; i < image_matches01_vec.size(); i++) {
-            if (image_matches01_vec[i][0].distance < image_matches01_vec[i][1].distance * des_dist_thresh) {  // prev -> curr match에서 좋은가?
+            if (image_matches01_vec[i][0].distance < image_matches01_vec[i][1].distance * config.des_dist_thresh_) {  // prev -> curr match에서 좋은가?
                 int image1_keypoint_idx = image_matches01_vec[i][0].trainIdx;
-                if (image_matches10_vec[image1_keypoint_idx][0].distance < image_matches10_vec[image1_keypoint_idx][1].distance * des_dist_thresh) {  // curr -> prev match에서 좋은가?
+                if (image_matches10_vec[image1_keypoint_idx][0].distance < image_matches10_vec[image1_keypoint_idx][1].distance * config.des_dist_thresh_) {  // curr -> prev match에서 좋은가?
                     if (image_matches01_vec[i][0].queryIdx == image_matches10_vec[image1_keypoint_idx][0].trainIdx)
                         good_matches.push_back(image_matches01_vec[i][0]);
                 }
@@ -193,7 +159,7 @@ int main(int argc, char** argv) {
         cv::Mat ransac_matches;
         cv::drawMatches(pPrev_frame->image_, pPrev_frame->keypoints_,
                         pCurr_frame->image_, pCurr_frame->keypoints_,
-                        good_matches, ransac_matches, cv::Scalar::all(-1), cv::Scalar::all(-1), mask);
+                        good_matches, ransac_matches, cv::Scalar::all(-1), cv::Scalar::all(-1), mask, cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
         cv::putText(ransac_matches, "frame" + std::to_string(pPrev_frame->id_) + " & frame" + std::to_string(pCurr_frame->id_),
                                     cv::Point(0, 20), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
         cv::imwrite("output_logs/inter_frames/frame"
@@ -236,6 +202,7 @@ int main(int argc, char** argv) {
         pCurr_frame->relative_pose_ = relative_pose;
         pCurr_frame->pose_ = pPrev_frame->pose_ * relative_pose;
         poses.push_back(poses[i - 1] * relative_pose);
+        relative_poses.push_back(relative_pose);
 
         // end timer [motion estimation]
         std::chrono::time_point<std::chrono::steady_clock> motion_estimation_end = std::chrono::steady_clock::now();
@@ -287,17 +254,17 @@ int main(int argc, char** argv) {
         keypoints_3d_vec.push_back(keypoints_3d_mat);
 
         //**========== 6. Local optimization ==========**//
-        if (do_optimize) {
+        if (config.do_optimize_) {
             if (pCurr_frame->id_ % 1 == 0) {
                 frame_window.push_back(pCurr_frame);
-                if (frame_window.size() > window_size) {
+                if (frame_window.size() > config.window_size_) {
                     frame_window.erase(frame_window.begin());
                 }
-                if (frame_window.size() == window_size) {
-                    double reprojection_error = calcReprojectionError(frame_window);
+                if (frame_window.size() == config.window_size_) {
+                    double reprojection_error = utils.calcReprojectionError(frame_window);
                     std::cout << "calculated reprojection error: " << reprojection_error << std::endl;
 
-                    optimizer.optimizeFrames(frame_window, optimizer_verbose);
+                    optimizer.optimizeFrames(frame_window, config.optimizer_verbose_);
                 }
             }
         }
@@ -314,81 +281,53 @@ int main(int argc, char** argv) {
         total_time_costs.push_back(total_time_cost);
     }
     keypoints_3d_vec.push_back(cv::Mat::zeros(3, 1, CV_64F));
-    drawReprojectedLandmarks(frames);
-    drawFramesLandmarks(frames);
+    utils.drawReprojectedLandmarks(frames);
+    utils.drawFramesLandmarks(frames);
+    utils.drawCorrespondingFeatures(frames, 3, 2);
 
     //**========== Log ==========**//
+    Logger logger;
+
     // trajectory
-    std::ofstream log_file("output_logs/trajectory.csv");
-    log_file << "qw,qx,qy,qz,x,y,z\n";
-    for (auto pose : poses) {
-        Eigen::Quaterniond quaternion(pose.rotation());
-        Eigen::Vector3d position = pose.translation();
-        log_file << quaternion.w() << "," << quaternion.x() << "," << quaternion.y() << "," << quaternion.z() << ","
-                    << position.x() << "," << position.y() << "," << position.z() << "\n";
-    }
+    logger.logTrajectory(relative_poses);
+    // logger.logTrajectory(poses);
 
     // keypoints
-    std::ofstream keypoints_file("output_logs/keypoints.csv");
-    for (int i = 0; i < keypoints_3d_vec.size(); i++) {
-        cv::Mat keypoints = keypoints_3d_vec[i];
-        keypoints_file << "# " << i << "\n";
-        for (int j = 0; j < keypoints.cols; j++) {
-            keypoints_file << keypoints.at<double>(0,j) << "," << keypoints.at<double>(1,j) << "," << keypoints.at<double>(2,j) << "\n";
-        }
-    }
+    logger.logKeypoints(keypoints_3d_vec);
 
     // landmarks
-    std::ofstream landmarks_file("output_logs/landmarks.csv");
-    for (auto pFrame : frames) {
-        landmarks_file << "# " << pFrame->id_ << "\n";
-        for (auto pLandmark : pFrame->landmarks_) {
-            Eigen::Vector3d landmark_point_3d = pLandmark->point_3d_;
-            landmarks_file << landmark_point_3d[0] << "," << landmark_point_3d[1] << "," << landmark_point_3d[2] << "\n";
-        }
-    }
+    logger.logLandmarks(frames);
 
     // time cost[us]
-    std::ofstream cost_file("output_logs/time_cost.csv");
-    cost_file << "feature extraction(us),feature matching(us),motion estimation(us),triangulation(us),scaling(us),total time(us)\n";
-    for (int i = 0; i < feature_extraction_costs.size(); i++) {
-        cost_file << feature_extraction_costs[i] << "," << feature_matching_costs[i] << "," << motion_estimation_costs[i] << ","
-                    << triangulation_costs[i] << "," << scaling_costs[i] << "," << total_time_costs[i] << "\n";
-    }
+    logger.logTimecosts(feature_extraction_costs,
+                        feature_matching_costs,
+                        motion_estimation_costs,
+                        triangulation_costs,
+                        scaling_costs,
+                        total_time_costs);
 
     // scales
-    std::string gt_path = config_file["gt_path"];
-    bool is_kitti = static_cast<bool>(static_cast<int>(config_file["is_kitti"]));  // boolean (1 = true, 0 = false)
     std::vector<double> gt_scales;
-    getGTScales(gt_path, is_kitti, num_frames, gt_scales);
-
-    std::ofstream scale_file("output_logs/scales.csv");
-    scale_file << "estimated scale,GT scale\n";
-    for (int i = 0; i < scales.size(); i++) {
-        scale_file << scales[i] << "," << gt_scales[i] << "\n";
-    }
+    getGTScales(config.gt_path_, config.is_kitti_, config.num_frames_, gt_scales);
+    logger.logScales(scales, gt_scales);
 
     // RPE
     double rpe_rot, rpe_trans;
-    calcRPE_rt(gt_path, frames, rpe_rot, rpe_trans);
-    std::ofstream rpe_file("output_logs/rpe.csv");
-    rpe_file << "RPEr,RPEt\n";
-    rpe_file << rpe_rot << "," << rpe_trans << "\n";
+    utils.calcRPE_rt(config.gt_path_, frames, rpe_rot, rpe_trans);
+    logger.logRPE(rpe_rot, rpe_trans);
     std::cout << "RPEr: " << rpe_rot << std::endl;
     std::cout << "RPEt: " << rpe_trans << std::endl;
 
     //**========== Visualize ==========**//
-    bool display_gt = static_cast<bool>(static_cast<int>(config_file["display_gt"]));
-    Visualizer visualizer(is_kitti, gt_path);
-    switch(display_type) {
+    Visualizer visualizer(config.is_kitti_, config.gt_path_);
+    switch(config.display_type_) {
         case 0:
-            visualizer.displayPoses(poses, display_gt, gt_path);
+            visualizer.displayPoses(poses, config.display_gt_, config.gt_path_);
             break;
         case 1:
-            visualizer.displayFramesAndLandmarks(frames, display_gt, gt_path);
+            visualizer.displayFramesAndLandmarks(frames, config.display_gt_, config.gt_path_);
             break;
     }
-    // visualizer.displayPoseWithKeypoints(poses, keypoints_3d_vec);
 
 
     return 0;
@@ -672,192 +611,3 @@ void getGTScales(const std::string gt_path, bool is_kitti, int num_frames, std::
         prev_trans_length = trans_length;
     }
 }
-
-void drawFramesLandmarks(const std::vector<std::shared_ptr<Frame>> &frames) {
-    for (const auto pFrame : frames) {
-        cv::Mat frame_img;
-        cv::cvtColor(pFrame->image_, frame_img, cv::COLOR_GRAY2BGR);
-
-        for (int i = 0; i < pFrame->landmarks_.size(); i++) {
-            int keypoint_idx = pFrame->landmarks_[i]->observations_.find(pFrame->id_)->second;
-            cv::Point2f kp_pt = pFrame->keypoints_[keypoint_idx].pt;
-
-            cv::rectangle(frame_img,
-                        kp_pt - cv::Point2f(5, 5),
-                        kp_pt + cv::Point2f(5, 5),
-                        cv::Scalar(0, 255, 0));  // green
-        }
-        cv::putText(frame_img, "frame" + std::to_string(pFrame->id_),
-                                    cv::Point(0, 20), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
-
-        cv::imwrite("output_logs/intra_frames/frame" + std::to_string(pFrame->id_) + "_landmarks.png", frame_img);
-    }
-}
-
-void drawReprojectedLandmarks(const std::vector<std::shared_ptr<Frame>> &frames) {
-    for (const auto pFrame: frames) {
-        cv::Mat frame_img;
-        cv::cvtColor(pFrame->image_, frame_img, cv::COLOR_GRAY2BGR);
-
-        Eigen::Matrix3d K;
-        cv::cv2eigen(pFrame->pCamera_->intrinsic_, K);
-
-        Eigen::Isometry3d w_T_c = pFrame->pose_;
-        Eigen::Isometry3d c_T_w = w_T_c.inverse();
-
-        for (const auto pLandmark : pFrame->landmarks_) {
-            Eigen::Vector3d landmark_point_3d = pLandmark->point_3d_;
-            Eigen::Vector4d landmark_point_3d_homo(landmark_point_3d[0],
-                                                    landmark_point_3d[1],
-                                                    landmark_point_3d[2],
-                                                    1);
-
-            Eigen::Vector3d projected_point_homo = K * c_T_w.matrix().block<3, 4>(0, 0) * landmark_point_3d_homo;
-
-            cv::Point2f projected_point(projected_point_homo[0] / projected_point_homo[2],
-                                        projected_point_homo[1] / projected_point_homo[2]);
-            cv::Point2f measurement_point = pFrame->keypoints_[pLandmark->observations_.find(pFrame->id_)->second].pt;
-
-            cv::rectangle(frame_img,
-                    measurement_point - cv::Point2f(5, 5),
-                    measurement_point + cv::Point2f(5, 5),
-                    cv::Scalar(0, 255, 0));  // green
-            cv::circle(frame_img, projected_point, 2, cv::Scalar(0, 0, 255));
-            cv::line(frame_img, measurement_point, projected_point, cv::Scalar(0, 0, 255));
-        }
-        cv::putText(frame_img, "frame" + std::to_string(pFrame->id_),
-                                    cv::Point(0, 20), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
-
-        cv::imwrite("output_logs/reprojected_landmarks/frame" + std::to_string(pFrame->id_) + "_proj.png", frame_img);
-    }
-}
-
-std::vector<Eigen::Isometry3d> calcRPE(const std::string gt_path, const std::vector<std::shared_ptr<Frame>> &frames) {
-    std::vector<Eigen::Isometry3d> rpe_vec;
-
-    std::vector<Eigen::Isometry3d> gt_poses;
-    loadGT(gt_path, gt_poses);
-
-    Eigen::Isometry3d est_rel_pose, gt_rel_pose;
-
-    Eigen::Isometry3d prev_gt_pose = gt_poses[0];
-    std::shared_ptr<Frame> pPrev_frame = frames[0];
-
-    for (int i = 1; i < frames.size(); i++) {
-        // GT relative pose
-        Eigen::Isometry3d curr_gt_pose = gt_poses[i];
-        gt_rel_pose = prev_gt_pose.inverse() * curr_gt_pose;
-
-        // estimated relative pose
-        std::shared_ptr<Frame> pCurr_frame = frames[i];
-        est_rel_pose = pPrev_frame->pose_.inverse() * pCurr_frame->pose_;
-
-        // calculate the relative pose error
-        Eigen::Isometry3d relative_pose_error = gt_rel_pose.inverse() * est_rel_pose;
-        rpe_vec.push_back(relative_pose_error);
-    }
-
-    return rpe_vec;
-}
-
-void calcRPE_rt(const std::string gt_path, const std::vector<std::shared_ptr<Frame>> &frames, double &_rpe_rot, double &_rpe_trans) {
-    std::vector<Eigen::Isometry3d> rpe_vec = calcRPE(gt_path, frames);
-
-    int num_frames = frames.size();
-    double acc_trans_error = 0;
-    double acc_theta = 0;
-
-    for (int i = 0; i < rpe_vec.size(); i++) {
-        Eigen::Isometry3d rpe = rpe_vec[i];
-
-        // RPE rotation
-        Eigen::Matrix3d rotation = rpe.rotation();
-        double rotation_trace = rotation.trace();
-        double theta = acos((rotation_trace - 1) / 2);
-        acc_theta += theta;
-
-        // RPE translation
-        double translation_error = rpe.translation().norm();
-        acc_trans_error += translation_error;
-    }
-
-    // mean RPE
-    _rpe_rot = acc_theta / double(num_frames);
-    _rpe_trans = acc_trans_error / double(num_frames);
-}
-
-void loadGT(std::string gt_path, std::vector<Eigen::Isometry3d> &_gt_poses) {
-    std::ifstream gt_poses_file(gt_path);
-    int no_frame;
-    double r11, r12, r13, r21, r22, r23, r31, r32, r33, t1, t2, t3;
-    std::string line;
-    std::vector<Eigen::Isometry3d> gt_poses;
-
-    while(std::getline(gt_poses_file, line)) {
-        std::stringstream ssline(line);
-        // if (is_kitti_) {  // KITTI format
-        ssline
-            >> r11 >> r12 >> r13 >> t1
-            >> r21 >> r22 >> r23 >> t2
-            >> r31 >> r32 >> r33 >> t3;
-        // }
-        // else {
-        //     ssline >> no_frame
-        //             >> r11 >> r12 >> r13 >> t1
-        //             >> r21 >> r22 >> r23 >> t2
-        //             >> r31 >> r32 >> r33 >> t3;
-        // }
-
-        Eigen::Matrix3d rotation_mat;
-        rotation_mat << r11, r12, r13,
-                        r21, r22, r23,
-                        r31, r32, r33;
-        Eigen::Vector3d translation_mat;
-        translation_mat << t1, t2, t3;
-        Eigen::Isometry3d gt_pose;
-        gt_pose.linear() = rotation_mat;
-        gt_pose.translation() = translation_mat;
-        gt_poses.push_back(gt_pose);
-    }
-
-    _gt_poses = gt_poses;
-}
-
-double calcReprojectionError(const std::vector<std::shared_ptr<Frame>> &frames) {
-    double reprojection_error = 0;
-
-    for (const auto pFrame: frames) {
-        cv::Mat frame_img;
-        cv::cvtColor(pFrame->image_, frame_img, cv::COLOR_GRAY2BGR);
-
-        Eigen::Matrix3d K;
-        cv::cv2eigen(pFrame->pCamera_->intrinsic_, K);
-
-        Eigen::Isometry3d w_T_c = pFrame->pose_;
-        Eigen::Isometry3d c_T_w = w_T_c.inverse();
-
-        double error = 0;
-        for (const auto pLandmark : pFrame->landmarks_) {
-            Eigen::Vector3d landmark_point_3d = pLandmark->point_3d_;
-            Eigen::Vector4d landmark_point_3d_homo(landmark_point_3d[0],
-                                                    landmark_point_3d[1],
-                                                    landmark_point_3d[2],
-                                                    1);
-
-            Eigen::Vector3d projected_point_homo = K * c_T_w.matrix().block<3, 4>(0, 0) * landmark_point_3d_homo;
-
-            cv::Point2f projected_point(projected_point_homo[0] / projected_point_homo[2],
-                                        projected_point_homo[1] / projected_point_homo[2]);
-            cv::Point2f measurement_point = pFrame->keypoints_[pLandmark->observations_.find(pFrame->id_)->second].pt;
-
-            cv::Point2f error_vector = projected_point - measurement_point;
-            error = sqrt(error_vector.x * error_vector.x + error_vector.y * error_vector.y);
-            reprojection_error += error;
-        }
-    }
-
-    return reprojection_error;
-}
-
-
-

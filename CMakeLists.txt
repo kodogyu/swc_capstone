@@ -24,9 +24,12 @@ include_directories(
 
 add_executable(visual_odometry
     src/camera.cpp
+    src/config.cpp
     src/frame.cpp
     src/landmark.cpp
+    src/logger.cpp
     src/optimizer.cpp
+    src/utils.cpp
     src/visual_odometry.cpp
     src/visualizer.cpp)
 target_link_libraries(visual_odometry ${OpenCV_LIBS} ${Pangolin_LIBRARIES} gtsam)
