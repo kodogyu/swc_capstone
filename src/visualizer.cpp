@@ -1,15 +1,11 @@
 #include "visualizer.hpp"
 
-Visualizer::Visualizer(int is_kitti) {
-    is_kitti_ = bool(is_kitti);
+Visualizer::Visualizer(std::shared_ptr<Configuration> pConfig, std::shared_ptr<Utils> pUtils) {
+    pConfig_ = pConfig;
+    pUtils_ = pUtils;
 }
 
-Visualizer::Visualizer(int is_kitti, std::string gt_path) {
-    gt_path_ = gt_path;
-    is_kitti_ = bool(is_kitti);
-}
-
-void Visualizer::displayPoses(const std::vector<Eigen::Isometry3d> &poses, const bool display_gt, const std::string gt_path) {
+void Visualizer::displayPoses(const std::vector<Eigen::Isometry3d> &poses) {
     pangolin::CreateWindowAndBind("Visual Odometry Example", 1024, 768);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
@@ -29,7 +25,7 @@ void Visualizer::displayPoses(const std::vector<Eigen::Isometry3d> &poses, const
     const float green[3] = {0, 1, 0};
 
     std::vector<Eigen::Isometry3d> gt_poses;
-    loadGT(gt_path, gt_poses);
+    pUtils_->loadGT(gt_poses);
 
     while (!pangolin::ShouldQuit()) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -79,48 +75,11 @@ void Visualizer::displayPoses(const std::vector<Eigen::Isometry3d> &poses, const
             last_center = Ow;
         }
 
-        if (display_gt) {
+        if (pConfig_->display_gt_) {
             drawGT(gt_poses);
         }
         pangolin::FinishFrame();
     }
-}
-
-void Visualizer::loadGT(std::string gt_path, std::vector<Eigen::Isometry3d> &_gt_poses) {
-    std::ifstream gt_poses_file(gt_path);
-    int no_frame;
-    double r11, r12, r13, r21, r22, r23, r31, r32, r33, t1, t2, t3;
-    std::string line;
-    std::vector<Eigen::Isometry3d> gt_poses;
-
-    while(std::getline(gt_poses_file, line)) {
-        std::stringstream ssline(line);
-        if (is_kitti_) {
-            ssline
-                >> r11 >> r12 >> r13 >> t1
-                >> r21 >> r22 >> r23 >> t2
-                >> r31 >> r32 >> r33 >> t3;
-        }
-        else {
-            ssline >> no_frame
-                    >> r11 >> r12 >> r13 >> t1
-                    >> r21 >> r22 >> r23 >> t2
-                    >> r31 >> r32 >> r33 >> t3;
-        }
-
-        Eigen::Matrix3d rotation_mat;
-        rotation_mat << r11, r12, r13,
-                        r21, r22, r23,
-                        r31, r32, r33;
-        Eigen::Vector3d translation_mat;
-        translation_mat << t1, t2, t3;
-        Eigen::Isometry3d gt_pose;
-        gt_pose.linear() = rotation_mat;
-        gt_pose.translation() = translation_mat;
-        gt_poses.push_back(gt_pose);
-    }
-
-    _gt_poses = gt_poses;
 }
 
 void Visualizer::drawGT(const std::vector<Eigen::Isometry3d> &_gt_poses) {
@@ -319,7 +278,7 @@ void Visualizer::drawPositions(const std::vector<std::pair<int, int>> &positions
     }
 }
 
-void Visualizer::displayFramesAndLandmarks(const std::vector<std::shared_ptr<Frame>> &frames, const bool display_gt, const std::string gt_path) {
+void Visualizer::displayFramesAndLandmarks(const std::vector<std::shared_ptr<Frame>> &frames) {
     pangolin::CreateWindowAndBind("Visual Odometry Viewer", 1024, 768);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
@@ -345,7 +304,7 @@ void Visualizer::displayFramesAndLandmarks(const std::vector<std::shared_ptr<Fra
     std::vector<const float*> colors {red, orange, yellow, green, blue, navy, purple};
 
     std::vector<Eigen::Isometry3d> gt_poses;
-    loadGT(gt_path, gt_poses);
+    pUtils_->loadGT(gt_poses);
 
     while (!pangolin::ShouldQuit()) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -410,7 +369,7 @@ void Visualizer::displayFramesAndLandmarks(const std::vector<std::shared_ptr<Fra
             color_idx = color_idx % colors.size();
         }
 
-        if (display_gt) {
+        if (pConfig_->display_gt_) {
             drawGT(gt_poses);
         }
         pangolin::FinishFrame();

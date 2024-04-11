@@ -5,14 +5,17 @@
 class Configuration {
 public:
     Configuration(std::string config_path) {config_path_ = config_path;}
+
     void parse();
     void getImageEntries();
+    void print();
 
     // configuration file path
     std::string config_path_;
 
     // Dataset
     int num_frames_;
+    int frame_offset_;
     std::filesystem::path left_images_dir_;
     std::vector<std::string> left_image_entries_;
     std::vector<std::string> right_image_entries_;
@@ -27,7 +30,7 @@ public:
     double cy_;
 
     // Visualize
-    int display_type_;
+    int display_type_;  // 0: pose only, 1: pose & landmarks, 2: pose only (aligned with gt)
     bool display_gt_;
 
     // Feature extraction
@@ -40,4 +43,8 @@ public:
     bool do_optimize_;
     int window_size_;
     bool optimizer_verbose_;
+
+    // Test
+    bool calc_reprojection_error_;
+    bool print_conf_;
 };

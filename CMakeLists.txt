@@ -28,6 +28,7 @@ add_executable(visual_odometry
     src/frame.cpp
     src/landmark.cpp
     src/logger.cpp
+    src/main.cpp
     src/optimizer.cpp
     src/utils.cpp
     src/visual_odometry.cpp

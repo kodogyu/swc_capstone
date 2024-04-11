@@ -12,6 +12,7 @@ public:
 
     int id_;
     cv::Mat image_;
+    int frame_image_idx_;
     std::vector<cv::KeyPoint> keypoints_;
     cv::Mat descriptors_;
     std::vector<double> depths_;
