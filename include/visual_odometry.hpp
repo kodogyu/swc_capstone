@@ -58,5 +58,6 @@ public:
     std::vector<int64_t> motion_estimation_costs_;
     std::vector<int64_t> triangulation_costs_;
     std::vector<int64_t> scaling_costs_;
+    std::vector<int64_t> optimization_costs_;
     std::vector<int64_t> total_time_costs_;
 };

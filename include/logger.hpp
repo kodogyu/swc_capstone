@@ -15,6 +15,7 @@ public:
                         std::vector<int64_t> motion_estimation_costs,
                         std::vector<int64_t> triangulation_costs,
                         std::vector<int64_t> scaling_costs,
+                        std::vector<int64_t> optimization_costs,
                         std::vector<int64_t> total_time_costs) const;
     void logScales(std::vector<double> scales, std::vector<double> gt_scales) const;
     void logRPE(double rpe_rot, double rpe_trans) const;

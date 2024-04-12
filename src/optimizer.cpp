@@ -78,7 +78,7 @@ void LocalOptimizer::optimizeFrames(std::vector<std::shared_ptr<Frame>> &frames,
     gtsam::Values result = optimizer.optimize();
     // end timer [optimization]
     const std::chrono::time_point<std::chrono::steady_clock> optimization_end = std::chrono::steady_clock::now();
-    auto optimization_diff = optimization_end - optimization_end;
+    auto optimization_diff = optimization_end - optimization_start;
     std::cout << "GTSAM Optimization elapsed time: "
                 << std::chrono::duration_cast<std::chrono::milliseconds>(optimization_diff).count() << "[ms]" << std::endl;
 

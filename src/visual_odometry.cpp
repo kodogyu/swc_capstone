@@ -171,8 +171,8 @@ void VisualOdometry::run() {
 
         std::vector<Eigen::Vector3d> keypoints_3d;
         // triangulate(camera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, relative_pose, keypoints_3d);
-        // triangulate2(camera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, mask, keypoints_3d);
-        triangulate3(camera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, mask, keypoints_3d);
+        triangulate2(camera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, mask, keypoints_3d);
+        // triangulate3(camera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, mask, keypoints_3d);
         pPrev_frame->keypoints_3d_ = keypoints_3d;
 
         // end timer [triangulation]
@@ -217,6 +217,8 @@ void VisualOdometry::run() {
         keypoints_3d_vec_.push_back(keypoints_3d_mat);
 
         //**========== 6. Local optimization ==========**//
+        // start timer [optimization]
+        const std::chrono::time_point<std::chrono::steady_clock> optimization_start = std::chrono::steady_clock::now();
         if (pConfig_->do_optimize_) {
             if (pCurr_frame->id_ % 1 == 0) {
                 frame_window_.push_back(pCurr_frame);
@@ -231,6 +233,11 @@ void VisualOdometry::run() {
                 }
             }
         }
+        // end timer [optimization]
+        const std::chrono::time_point<std::chrono::steady_clock> optimization_end = std::chrono::steady_clock::now();
+        auto optimization_diff = optimization_end - optimization_start;
+        auto optimization_cost = std::chrono::duration_cast<std::chrono::milliseconds>(optimization_diff).count();
+        optimization_costs_.push_back(optimization_cost);
 
         // move on
         frames_.push_back(pCurr_frame);
@@ -266,6 +273,7 @@ void VisualOdometry::run() {
                         motion_estimation_costs_,
                         triangulation_costs_,
                         scaling_costs_,
+                        optimization_costs_,
                         total_time_costs_);
 
     // scales
