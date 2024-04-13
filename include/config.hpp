@@ -35,6 +35,10 @@ public:
 
     // Feature extraction
     int num_features_;
+    bool filter_keypoints_;
+    int patch_width_;
+    int patch_height_;
+    int kps_per_patch_;
 
     // Feature matching
     double des_dist_thresh_;

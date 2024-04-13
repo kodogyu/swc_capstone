@@ -11,7 +11,7 @@ VisualOdometry::VisualOdometry(std::string config_path) {
     orb_matcher_ = cv::DescriptorMatcher::create(cv::DescriptorMatcher::BRUTEFORCE);
 
     pUtils_ = std::make_shared<Utils>(pConfig_);
-    visualizer_ = Visualizer(pConfig_, pUtils_);
+    pVisualizer_ = std::make_shared<Visualizer>(pConfig_, pUtils_);
 }
 
 void VisualOdometry::run() {
@@ -55,6 +55,20 @@ void VisualOdometry::run() {
         }
         orb_->detectAndCompute(pCurr_frame->image_, cv::Mat(), curr_image_keypoints, curr_image_descriptors);
         pCurr_frame->setKeypoints(curr_image_keypoints, curr_image_descriptors);
+
+        // filter keypoints
+        if (pConfig_->filter_keypoints_) {
+            cv::Size image_size = cv::Size(pPrev_frame->image_.cols, pPrev_frame->image_.rows);
+            pUtils_->filterKeypoints(image_size, pPrev_frame->keypoints_, pPrev_frame->descriptors_);
+
+            // draw grid
+            pUtils_->drawGrid(pPrev_frame->image_);
+
+            // draw keypoints
+            std::string tail;
+            tail = "_(" + std::to_string(pConfig_->patch_width_) + ", " + std::to_string(pConfig_->patch_height_) + ", " + std::to_string(pConfig_->kps_per_patch_) + ")";
+            pUtils_->drawKeypoints(pPrev_frame, "output_logs/filtered_keypoints", tail);
+        }
 
         // end timer [feature extraction]
         std::chrono::time_point<std::chrono::steady_clock> feature_extraction_end = std::chrono::steady_clock::now();
@@ -239,6 +253,9 @@ void VisualOdometry::run() {
         auto optimization_cost = std::chrono::duration_cast<std::chrono::milliseconds>(optimization_diff).count();
         optimization_costs_.push_back(optimization_cost);
 
+        // update visualizer buffer
+        pVisualizer_->updateBuffer(pCurr_frame->pose_);
+
         // move on
         frames_.push_back(pCurr_frame);
         pPrev_frame = pCurr_frame;
@@ -249,6 +266,7 @@ void VisualOdometry::run() {
         auto total_time_diff = total_time_end - total_time_start;
         auto total_time_cost = std::chrono::duration_cast<std::chrono::microseconds>(total_time_diff).count();
         total_time_costs_.push_back(total_time_cost);
+
     }
     keypoints_3d_vec_.push_back(cv::Mat::zeros(3, 1, CV_64F));
     // pUtils_->drawReprojectedLandmarks(frames_);
@@ -290,20 +308,8 @@ void VisualOdometry::run() {
     // pUtils_->calcRPE_rt(frames_, rpe_rot, rpe_trans);
     pUtils_->calcRPE_rt(gt_poses, aligned_est_poses, rpe_rot, rpe_trans);
     logger_.logRPE(rpe_rot, rpe_trans);
-
-    //**========== Visualize ==========**//
-    switch(pConfig_->display_type_) {
-        case 0:
-            visualizer_.displayPoses(poses_);
-            break;
-        case 1:
-            visualizer_.displayFramesAndLandmarks(frames_);
-            break;
-        case 2:
-            visualizer_.displayPoses(aligned_est_poses);
-            break;
-
-    }
+    std::cout << "RPEr: " << rpe_rot << std::endl;
+    std::cout << "RPEt: " << rpe_trans << std::endl;
 }
 
 void VisualOdometry::triangulate(cv::Mat camera_Matrix, std::shared_ptr<Frame> &pPrev_frame, std::shared_ptr<Frame> &pCurr_frame, std::vector<cv::DMatch> good_matches, Eigen::Isometry3d relative_pose, std::vector<Eigen::Vector3d> &frame_keypoints_3d) {
@@ -697,3 +703,5 @@ void VisualOdometry::getGTScales(const std::string gt_path, bool is_kitti, int n
         prev_trans_length = trans_length;
     }
 }
+
+

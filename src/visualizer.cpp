@@ -3,6 +3,14 @@
 Visualizer::Visualizer(std::shared_ptr<Configuration> pConfig, std::shared_ptr<Utils> pUtils) {
     pConfig_ = pConfig;
     pUtils_ = pUtils;
+
+    newest_pointer_ = 0;
+
+    visualizer_thread_ = std::thread(std::bind(&Visualizer::run, this));
+}
+
+Visualizer::~Visualizer() {
+    visualizer_thread_.join();
 }
 
 void Visualizer::displayPoses(const std::vector<Eigen::Isometry3d> &poses) {
@@ -375,3 +383,93 @@ void Visualizer::displayFramesAndLandmarks(const std::vector<std::shared_ptr<Fra
         pangolin::FinishFrame();
     }
 }
+
+void Visualizer::run() {
+    pangolin::CreateWindowAndBind("Visual Odometry Viewer", 1024, 768);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    pangolin::OpenGlRenderState vis_camera(
+        pangolin::ProjectionMatrix(1024, 768, 400, 400, 512, 384, 0.1, 1000),
+        pangolin::ModelViewLookAt(0, -3, -3, 0, 0, 0, 0.0, -1.0, 0.0));
+
+    // Add named OpenGL viewport to window and provide 3D Handler
+    pangolin::View& vis_display =
+        pangolin::CreateDisplay()
+            .SetBounds(0.0, 1.0, 0.0, 1.0, -1024.0f / 768.0f)
+            .SetHandler(new pangolin::Handler3D(vis_camera));
+
+    while (!pangolin::ShouldQuit()) {
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+        vis_display.Activate(vis_camera);
+
+        // lock buffer mutex
+        std::lock_guard<std::mutex> lock(buffer_mutex_);
+
+        // draw the original axis
+        glLineWidth(3);
+        glColor3f(1.0, 0.0, 0.0);
+        glBegin(GL_LINES);
+        glVertex3f(0, 0, 0);
+        glVertex3f(1, 0, 0);
+        glColor3f(0.0, 1.0, 0.0);
+        glVertex3f(0, 0, 0);
+        glVertex3f(0, 1, 0);
+        glColor3f(0.0, 0.0, 1.0);
+        glVertex3f(0, 0, 0);
+        glVertex3f(0, 0, 1);
+        glEnd();
+
+        // draw transformed axis
+        Eigen::Vector3d last_center(0.0, 0.0, 0.0);
+        for (const Eigen::Isometry3d &cam_pose : est_pose_buffer_) {
+            Eigen::Vector3d Ow = cam_pose.translation();
+            Eigen::Vector3d Xw = cam_pose * (0.1 * Eigen::Vector3d(1.0, 0.0, 0.0));
+            Eigen::Vector3d Yw = cam_pose * (0.1 * Eigen::Vector3d(0.0, 1.0, 0.0));
+            Eigen::Vector3d Zw = cam_pose * (0.1 * Eigen::Vector3d(0.0, 0.0, 1.0));
+            glBegin(GL_LINES);
+            glColor3f(1.0, 0.0, 0.0);
+            glVertex3d(Ow[0], Ow[1], Ow[2]);
+            glVertex3d(Xw[0], Xw[1], Xw[2]);
+            glColor3f(0.0, 1.0, 0.0);
+            glVertex3d(Ow[0], Ow[1], Ow[2]);
+            glVertex3d(Yw[0], Yw[1], Yw[2]);
+            glColor3f(0.0, 0.0, 1.0);
+            glVertex3d(Ow[0], Ow[1], Ow[2]);
+            glVertex3d(Zw[0], Zw[1], Zw[2]);
+            glEnd();
+
+            // draw odometry line
+            glBegin(GL_LINES);
+            glColor3f(0.0, 0.0, 0.0);
+            glVertex3d(last_center[0], last_center[1], last_center[2]);
+            glVertex3d(Ow[0], Ow[1], Ow[2]);
+            glEnd();
+
+            last_center = Ow;
+        }
+
+        if (pConfig_->display_gt_ && newest_pointer_ > 0) {
+            drawGT(gt_buffer_);
+        }
+        pangolin::FinishFrame();
+    }
+}
+
+void Visualizer::updateBuffer(const Eigen::Isometry3d &est_pose) {
+    newest_pointer_++;
+
+    // lock buffer mutex
+    std::lock_guard<std::mutex> lock(buffer_mutex_);
+
+    est_pose_buffer_.push_back(est_pose);
+    gt_buffer_.push_back(pUtils_->getGT(newest_pointer_));
+}
+
+
+
+
+
+

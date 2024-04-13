@@ -124,6 +124,69 @@ void Utils::drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
     cv::imwrite("output_logs/reprojected_landmarks/frame" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + "frame" + std::to_string(pFrame->frame_image_idx_) + "_proj.png", result_image);
 }
 
+void Utils::drawKeypoints(std::shared_ptr<Frame> pFrame,
+                        std::string folder,
+                        std::string tail) {
+    int id = pFrame->frame_image_idx_;
+    cv::Mat image = pFrame->image_;
+    std::vector<cv::KeyPoint> img_kps = pFrame->keypoints_;
+    cv::Mat image_copy;
+
+    if (image.type() == CV_8UC1) {
+        cv::cvtColor(image, image_copy, cv::COLOR_GRAY2BGR);
+    }
+    else {
+        image.copyTo(image_copy);
+    }
+
+    for (int i = 0; i < img_kps.size(); i++) {
+        cv::Point2f img_kp_pt = img_kps[i].pt;
+        // draw images
+        cv::rectangle(image_copy,
+                    img_kp_pt - cv::Point2f(5, 5),
+                    img_kp_pt + cv::Point2f(5, 5),
+                    cv::Scalar(0, 255, 0));  // green, (yellow)
+        cv::circle(image_copy,
+                    img_kp_pt,
+                    1,
+                    cv::Scalar(0, 0, 255));  // red, (blue)
+    }
+    cv::putText(image_copy, "frame" + std::to_string(id),
+                                    cv::Point(0, 20), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
+    cv::putText(image_copy, "#features: " + std::to_string(img_kps.size()),
+                                    cv::Point(0, 40), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
+
+    cv::imwrite(folder + "/frame" + std::to_string(id) + "_kps" + tail + ".png", image_copy);
+}
+
+
+void Utils::drawGrid(cv::Mat &image) {
+    cv::Size patch_size = cv::Size(pConfig_->patch_width_, pConfig_->patch_height_);
+
+    // cv::cvtColor(image, image, cv::COLOR_GRAY2BGR);
+
+    int row_iter = (image.rows) / patch_size.height;
+    int col_iter = (image.cols) / patch_size.width;
+
+    // 가로선
+    for (int i = 0; i < row_iter; i++) {
+        int row = (i + 1) * patch_size.height;
+        cv::line(image, cv::Point2f(0, row), cv::Point2f(image.cols, row), cv::Scalar(0, 0, 0), 2);
+    }
+    // 세로선
+    for (int j = 0; j < col_iter; j++) {
+        int col = (j + 1) * patch_size.width;
+        cv::line(image, cv::Point2f(col, 0), cv::Point2f(col, image.rows), cv::Scalar(0, 0, 0), 2);
+    }
+
+    cv::putText(image, "patch width: " + std::to_string(patch_size.width),
+                                    cv::Point(image.cols - 200, 20), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
+    cv::putText(image, "patch height: " + std::to_string(patch_size.height),
+                                    cv::Point(image.cols - 200, 40), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
+    cv::putText(image, "keypoints / patch: " + std::to_string(pConfig_->kps_per_patch_),
+                                    cv::Point(image.cols - 250, 60), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
+}
+
 void Utils::alignPoses(const std::vector<Eigen::Isometry3d> &gt_poses, const std::vector<Eigen::Isometry3d> &est_poses, std::vector<Eigen::Isometry3d> &aligned_est_poses) {
     double gt_length = 0, est_length = 0;
 
@@ -142,15 +205,17 @@ void Utils::alignPoses(const std::vector<Eigen::Isometry3d> &gt_poses, const std
         est_length += est_rel_pose.translation().norm();
 
         prev_gt_pose = curr_gt_pose;
+        prev_est_pose = curr_est_pose;
     }
 
     double scale = gt_length / est_length;
 
+    aligned_est_poses.push_back(Eigen::Isometry3d::Identity());
     for (int j = 0; j < est_rel_poses.size(); j++) {
         Eigen::Isometry3d aligned_est_rel_pose(est_rel_poses[j]);
         aligned_est_rel_pose.translation() = est_rel_poses[j].translation() * scale;
 
-        aligned_est_poses.push_back(est_poses[j] * aligned_est_rel_pose);
+        aligned_est_poses.push_back(aligned_est_poses[j] * aligned_est_rel_pose);
     }
 }
 
@@ -301,6 +366,52 @@ void Utils::loadGT(std::vector<Eigen::Isometry3d> &_gt_poses) {
     }
 
     _gt_poses = gt_poses;
+}
+
+Eigen::Isometry3d Utils::getGT(int &frame_idx){
+    std::ifstream gt_poses_file(pConfig_->gt_path_);
+    int no_frame;
+    double r11, r12, r13, r21, r22, r23, r31, r32, r33, t1, t2, t3;
+    std::string line;
+    std::vector<Eigen::Isometry3d> gt_poses;
+
+    // skip not interesting lines
+    for (int l = 0; l < pConfig_->frame_offset_ + frame_idx; l++) {
+        std::getline(gt_poses_file, line);
+    }
+
+    // read the line
+    std::getline(gt_poses_file, line);
+    std::stringstream ssline(line);
+    if (pConfig_->is_kitti_) {  // KITTI format
+    ssline
+        >> r11 >> r12 >> r13 >> t1
+        >> r21 >> r22 >> r23 >> t2
+        >> r31 >> r32 >> r33 >> t3;
+    }
+    else {
+        ssline >> no_frame
+                >> r11 >> r12 >> r13 >> t1
+                >> r21 >> r22 >> r23 >> t2
+                >> r31 >> r32 >> r33 >> t3;
+    }
+
+    // rotation
+    Eigen::Matrix3d rotation_mat;
+    rotation_mat << r11, r12, r13,
+                    r21, r22, r23,
+                    r31, r32, r33;
+
+    // translation
+    Eigen::Vector3d translation_mat;
+    translation_mat << t1, t2, t3;
+
+    // Transformation
+    Eigen::Isometry3d gt_pose;
+    gt_pose.linear() = rotation_mat;
+    gt_pose.translation() = translation_mat;
+
+    return gt_pose;
 }
 
 double Utils::calcReprojectionError(const std::vector<std::shared_ptr<Frame>> &frames) {
@@ -461,6 +572,39 @@ void Utils::reprojectLandmarks(const std::shared_ptr<Frame> &pFrame,
             curr_projected_pts.push_back(projected_point1);
         }
     }
+}
+
+void Utils::filterKeypoints(const cv::Size image_size, std::vector<cv::KeyPoint> &img_kps, cv::Mat &img_descriptor) {
+    cv::Size patch_size = cv::Size(pConfig_->patch_width_, pConfig_->patch_height_);
+
+    int row_iter = (image_size.height - 1) / patch_size.height;
+    int col_iter = (image_size.width - 1) / patch_size.width;
+
+    std::vector<std::vector<int>> bins(row_iter + 1, std::vector<int>(col_iter + 1));
+    std::cout << "bin size: (" << bins.size() << ", " << bins[0].size() << ")" << std::endl;
+
+    std::vector<cv::KeyPoint> filtered_kps;
+    cv::Mat filtered_descriptors;
+    std::vector<cv::Mat> filtered_descriptors_vec;
+
+    for (int i = 0; i < img_kps.size(); i++) {
+        cv::Point2f kp_pt = img_kps[i].pt;
+
+        int bin_cnt = bins[kp_pt.y / patch_size.height][kp_pt.x / patch_size.width];
+        if (bin_cnt < pConfig_->kps_per_patch_) {
+            filtered_kps.push_back(img_kps[i]);
+            filtered_descriptors_vec.push_back(img_descriptor.row(i));
+
+            bins[kp_pt.y / patch_size.height][kp_pt.x / patch_size.width]++;
+        }
+    }
+
+    for (auto desc : filtered_descriptors_vec) {
+        filtered_descriptors.push_back(desc);
+    }
+
+    img_kps = filtered_kps;
+    img_descriptor = filtered_descriptors;
 }
 
 

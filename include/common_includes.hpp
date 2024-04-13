@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <memory>
 #include <filesystem>
+#include <thread>
 
 #include <Eigen/Dense>
 

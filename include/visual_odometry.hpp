@@ -2,7 +2,6 @@
 
 #include <iostream>
 #include <fstream>
-#include <thread>
 #include <chrono>
 #include <sstream>
 
@@ -38,7 +37,7 @@ public:
     std::shared_ptr<Configuration> pConfig_;
     std::shared_ptr<Utils> pUtils_;
     Logger logger_;
-    Visualizer visualizer_;
+    std::shared_ptr<Visualizer> pVisualizer_;
     std::shared_ptr<Camera> camera_;
     LocalOptimizer optimizer_;
     cv::Ptr<cv::ORB> orb_;

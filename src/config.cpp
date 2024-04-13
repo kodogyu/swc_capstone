@@ -25,6 +25,10 @@ void Configuration::parse() {
 
     // Feature extraction
     num_features_ = config_file["num_features"];
+    filter_keypoints_ = static_cast<bool>(static_cast<int>(config_file["filter_keypoints"]));
+    patch_width_ = config_file["patch_width"];
+    patch_height_ = config_file["patch_height"];
+    kps_per_patch_ = config_file["kps_per_patch"];
 
     // Feature matching
     des_dist_thresh_ = config_file["des_dist_thresh"];
@@ -90,7 +94,11 @@ void Configuration::print() {
 
     // Feature extraction
     std::cout << "[Feature Extraction]" << std::endl;
-    std::cout << "num_features: " << num_features_ << "\n\n";
+    std::cout << "num_features: " << num_features_ << "\n";
+    std::cout << "filter_keypoints: " << filter_keypoints_ << "\n";
+    std::cout << "patch_width: " << patch_width_ << "\n";
+    std::cout << "patch_height: " << patch_height_ << "\n";
+    std::cout << "kps_per_patch: " << kps_per_patch_ << "\n\n";
 
     // Feature matching
     std::cout << "[Feature Extraction]" << std::endl;
