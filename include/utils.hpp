@@ -45,7 +45,8 @@ public:
                             std::vector<cv::Point2f> &prev_projected_pts,
                             std::vector<cv::Point2f> &curr_projected_pts);
 
-    void filterKeypoints(const cv::Size image_size, std::vector<cv::KeyPoint> &img_kps, cv::Mat &img_descriptor);
+    void filterKeypoints(std::shared_ptr<Frame> &pFrame);
+    void filterMatches(std::shared_ptr<Frame> &pFrame, std::vector<cv::DMatch> &matches);
 
     std::shared_ptr<Configuration> pConfig_;
 };

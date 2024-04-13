@@ -1,8 +1,8 @@
 %YAML:1.0
 
 #========== Dataset ==========#
-num_frames: 10
-frame_offset: 8
+num_frames: 100
+frame_offset: 0
 
 # # KITTI-360
 # is_kitti: 0
@@ -49,13 +49,14 @@ display_type: 2
 #========== Feature extraction ==========#
 num_features: 3000
 
-filter_keypoints: 1
+filter_keypoints: 0
+filter_matches: 1
 patch_width: 50
 patch_height: 50
-kps_per_patch: 50
+kps_per_patch: 70
 
 #========== Feature matching ==========#
-des_dist_thresh: 0.7
+des_dist_thresh: 0.6
 
 #========== Optimization ==========#
 do_optimize: 0

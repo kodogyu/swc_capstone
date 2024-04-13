@@ -58,8 +58,7 @@ void VisualOdometry::run() {
 
         // filter keypoints
         if (pConfig_->filter_keypoints_) {
-            cv::Size image_size = cv::Size(pPrev_frame->image_.cols, pPrev_frame->image_.rows);
-            pUtils_->filterKeypoints(image_size, pPrev_frame->keypoints_, pPrev_frame->descriptors_);
+            pUtils_->filterKeypoints(pPrev_frame);
 
             // draw grid
             pUtils_->drawGrid(pPrev_frame->image_);
@@ -90,14 +89,6 @@ void VisualOdometry::run() {
 
         std::vector<cv::DMatch> good_matches;  // good matchings
         for (int i = 0; i < image_matches01_vec.size(); i++) {
-            // cv::Mat img0_des = pPrev_frame->descriptors_.row(image_matches01_vec[i][0].queryIdx);
-            // cv::Mat img1_des = pCurr_frame->descriptors_.row(image_matches01_vec[i][0].trainIdx);
-
-            // std::vector<cv::DMatch> m;
-            // orb_matcher->match(img0_des, img1_des, m);
-            // std::cout << "image0 descriptor: " << img0_des << std::endl;
-            // std::cout << "image1 descriptor: " << img1_des << std::endl;
-
             if (image_matches01_vec[i][0].distance < image_matches01_vec[i][1].distance * pConfig_->des_dist_thresh_) {  // prev -> curr match에서 좋은가?
                 int image1_keypoint_idx = image_matches01_vec[i][0].trainIdx;
                 if (image_matches10_vec[image1_keypoint_idx][0].distance < image_matches10_vec[image1_keypoint_idx][1].distance * pConfig_->des_dist_thresh_) {  // curr -> prev match에서 좋은가?
@@ -105,6 +96,19 @@ void VisualOdometry::run() {
                         good_matches.push_back(image_matches01_vec[i][0]);
                 }
             }
+        }
+
+        // filter matches
+        if (pConfig_->filter_matches_) {
+            pUtils_->filterMatches(pPrev_frame, good_matches);
+
+            // draw grid
+            pUtils_->drawGrid(pPrev_frame->image_);
+
+            // draw keypoints
+            std::string tail;
+            tail = "_(" + std::to_string(pConfig_->patch_width_) + ", " + std::to_string(pConfig_->patch_height_) + ", " + std::to_string(pConfig_->kps_per_patch_) + ")";
+            pUtils_->drawKeypoints(pPrev_frame, "output_logs/filtered_matches", tail);
         }
 
         std::cout << "original features for image" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + std::to_string(pCurr_frame->frame_image_idx_) + ": " << image_matches01_vec.size() << std::endl;

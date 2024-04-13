@@ -574,19 +574,24 @@ void Utils::reprojectLandmarks(const std::shared_ptr<Frame> &pFrame,
     }
 }
 
-void Utils::filterKeypoints(const cv::Size image_size, std::vector<cv::KeyPoint> &img_kps, cv::Mat &img_descriptor) {
+void Utils::filterKeypoints(std::shared_ptr<Frame> &pFrame) {
     cv::Size patch_size = cv::Size(pConfig_->patch_width_, pConfig_->patch_height_);
+    cv::Size image_size = cv::Size(pFrame->image_.cols, pFrame->image_.rows);
 
     int row_iter = (image_size.height - 1) / patch_size.height;
     int col_iter = (image_size.width - 1) / patch_size.width;
 
+    // make bins
     std::vector<std::vector<int>> bins(row_iter + 1, std::vector<int>(col_iter + 1));
     std::cout << "bin size: (" << bins.size() << ", " << bins[0].size() << ")" << std::endl;
+
+    std::vector<cv::KeyPoint> img_kps = pFrame->keypoints_;
+    cv::Mat img_descriptor = pFrame->descriptors_;
 
     std::vector<cv::KeyPoint> filtered_kps;
     cv::Mat filtered_descriptors;
     std::vector<cv::Mat> filtered_descriptors_vec;
-
+    // filtering
     for (int i = 0; i < img_kps.size(); i++) {
         cv::Point2f kp_pt = img_kps[i].pt;
 
@@ -603,9 +608,40 @@ void Utils::filterKeypoints(const cv::Size image_size, std::vector<cv::KeyPoint>
         filtered_descriptors.push_back(desc);
     }
 
-    img_kps = filtered_kps;
-    img_descriptor = filtered_descriptors;
+    pFrame->keypoints_ = filtered_kps;
+    pFrame->descriptors_ = filtered_descriptors;
 }
 
+void Utils::filterMatches(std::shared_ptr<Frame> &pFrame, std::vector<cv::DMatch> &matches) {
+    cv::Size patch_size = cv::Size(pConfig_->patch_width_, pConfig_->patch_height_);
+    cv::Size image_size = cv::Size(pFrame->image_.cols, pFrame->image_.rows);
+
+    int row_iter = (image_size.height - 1) / patch_size.height;
+    int col_iter = (image_size.width - 1) / patch_size.width;
+
+    std::vector<std::vector<int>> bins(row_iter + 1, std::vector<int>(col_iter + 1));
+    std::cout << "bin size: (" << bins.size() << ", " << bins[0].size() << ")" << std::endl;
+
+    std::vector<cv::DMatch> filtered_matches;
+
+    // sort matches
+    std::sort(matches.begin(), matches.end(), [](const cv::DMatch& a, const cv::DMatch& b) {
+        return a.distance < b.distance;
+    });
+
+    // filtering
+    for (int i = 0; i < matches.size(); i++) {
+        cv::Point2f kp_pt = pFrame->keypoints_[matches[i].queryIdx].pt;
+
+        int bin_cnt = bins[kp_pt.y / patch_size.height][kp_pt.x / patch_size.width];
+        if (bin_cnt < pConfig_->kps_per_patch_) {
+            filtered_matches.push_back(matches[i]);
+
+            bins[kp_pt.y / patch_size.height][kp_pt.x / patch_size.width]++;
+        }
+    }
+
+    matches = filtered_matches;
+}
 
 
