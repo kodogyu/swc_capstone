@@ -6,7 +6,9 @@ Visualizer::Visualizer(std::shared_ptr<Configuration> pConfig, std::shared_ptr<U
 
     newest_pointer_ = 0;
 
-    visualizer_thread_ = std::thread(std::bind(&Visualizer::run, this));
+    if (pConfig_->display_type_ == DisplayType::REALTIME_VIS) {
+        visualizer_thread_ = std::thread(std::bind(&Visualizer::run, this));
+    }
 }
 
 Visualizer::~Visualizer() {

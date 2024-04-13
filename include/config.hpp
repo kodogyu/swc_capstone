@@ -2,6 +2,18 @@
 
 #include "common_includes.hpp"
 
+enum DisplayType {
+    POSE_ONLY,
+    POSE_AND_LANDMARKS,
+    ALIGNED_POSE,
+    REALTIME_VIS
+};
+
+enum FilterMode {
+    KEYPOINT_FILTERING,
+    MATCH_FILTERING
+};
+
 class Configuration {
 public:
     Configuration(std::string config_path) {config_path_ = config_path;}
@@ -35,8 +47,7 @@ public:
 
     // Feature extraction
     int num_features_;
-    bool filter_keypoints_;
-    bool filter_matches_;
+    int filtering_mode_;
     int patch_width_;
     int patch_height_;
     int kps_per_patch_;

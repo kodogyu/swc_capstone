@@ -1,7 +1,7 @@
 %YAML:1.0
 
 #========== Dataset ==========#
-num_frames: 100
+num_frames: 150
 frame_offset: 0
 
 # # KITTI-360
@@ -41,16 +41,19 @@ cy: 185.2157
 #========== Visualize ==========#
 display_gt: 1
 # display_type:
-#   0: pose only
+#   0: pose only (not aligned)
 #   1: pose & landmarks
 #   2: pose only (aligned with gt)
-display_type: 2
+#   3: realtime visualization (not aligned)
+display_type: 1
 
 #========== Feature extraction ==========#
 num_features: 3000
 
-filter_keypoints: 0
-filter_matches: 1
+# filtering_mode:
+#   0: keypoint filtering
+#   1: match filtering
+filtering_mode: 1
 patch_width: 50
 patch_height: 50
 kps_per_patch: 70

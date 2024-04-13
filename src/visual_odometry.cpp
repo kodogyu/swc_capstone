@@ -57,7 +57,7 @@ void VisualOdometry::run() {
         pCurr_frame->setKeypoints(curr_image_keypoints, curr_image_descriptors);
 
         // filter keypoints
-        if (pConfig_->filter_keypoints_) {
+        if (pConfig_->filtering_mode_ == FilterMode::KEYPOINT_FILTERING) {
             pUtils_->filterKeypoints(pPrev_frame);
 
             // draw grid
@@ -99,7 +99,7 @@ void VisualOdometry::run() {
         }
 
         // filter matches
-        if (pConfig_->filter_matches_) {
+        if (pConfig_->filtering_mode_ == FilterMode::MATCH_FILTERING) {
             pUtils_->filterMatches(pPrev_frame, good_matches);
 
             // draw grid
@@ -314,6 +314,19 @@ void VisualOdometry::run() {
     logger_.logRPE(rpe_rot, rpe_trans);
     std::cout << "RPEr: " << rpe_rot << std::endl;
     std::cout << "RPEt: " << rpe_trans << std::endl;
+
+    //**========== Visualize ==========**//
+    switch(pConfig_->display_type_) {
+        case DisplayType::POSE_ONLY:
+            pVisualizer_->displayPoses(poses_);
+            break;
+        case DisplayType::POSE_AND_LANDMARKS:
+            pVisualizer_->displayFramesAndLandmarks(frames_);
+            break;
+        case DisplayType::ALIGNED_POSE:
+            pVisualizer_->displayPoses(aligned_est_poses);
+            break;
+    }
 }
 
 void VisualOdometry::triangulate(cv::Mat camera_Matrix, std::shared_ptr<Frame> &pPrev_frame, std::shared_ptr<Frame> &pCurr_frame, std::vector<cv::DMatch> good_matches, Eigen::Isometry3d relative_pose, std::vector<Eigen::Vector3d> &frame_keypoints_3d) {
