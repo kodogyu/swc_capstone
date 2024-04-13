@@ -254,7 +254,7 @@ void VisualOdometry::run() {
         optimization_costs_.push_back(optimization_cost);
 
         // update visualizer buffer
-        pVisualizer_->updateBuffer(pCurr_frame->pose_);
+        pVisualizer_->updateBuffer(pCurr_frame);
 
         // move on
         frames_.push_back(pCurr_frame);

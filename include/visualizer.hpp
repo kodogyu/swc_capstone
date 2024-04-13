@@ -20,12 +20,13 @@ public:
     void displayFramesAndLandmarks(const std::vector<std::shared_ptr<Frame>> &frames);
 
     void run();
-    void updateBuffer(const Eigen::Isometry3d &est_pose);
+    void updateBuffer(const std::shared_ptr<Frame> &pFrame);
 
     std::shared_ptr<Configuration> pConfig_;
     std::shared_ptr<Utils> pUtils_;
 
     int newest_pointer_;
+    std::shared_ptr<Frame> current_frame_;
 
     std::mutex buffer_mutex_;
     std::vector<Eigen::Isometry3d> est_pose_buffer_;

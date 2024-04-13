@@ -454,18 +454,26 @@ void Visualizer::run() {
         if (pConfig_->display_gt_ && newest_pointer_ > 0) {
             drawGT(gt_buffer_);
         }
+
+        if (newest_pointer_ > 0) {
+            cv::imshow("Frame viewer", current_frame_->image_);
+            cv::waitKey(1);
+        }
+
         pangolin::FinishFrame();
     }
 }
 
-void Visualizer::updateBuffer(const Eigen::Isometry3d &est_pose) {
+void Visualizer::updateBuffer(const std::shared_ptr<Frame> &pFrame) {
     newest_pointer_++;
 
     // lock buffer mutex
     std::lock_guard<std::mutex> lock(buffer_mutex_);
 
-    est_pose_buffer_.push_back(est_pose);
+    est_pose_buffer_.push_back(pFrame->pose_);
     gt_buffer_.push_back(pUtils_->getGT(newest_pointer_));
+
+    current_frame_ = pFrame;
 }
 
 
