@@ -12,7 +12,9 @@ Visualizer::Visualizer(std::shared_ptr<Configuration> pConfig, std::shared_ptr<U
 }
 
 Visualizer::~Visualizer() {
-    visualizer_thread_.join();
+    if (pConfig_->display_type_ == DisplayType::REALTIME_VIS) {
+        visualizer_thread_.join();
+    }
 }
 
 void Visualizer::displayPoses(const std::vector<Eigen::Isometry3d> &poses) {
@@ -90,6 +92,15 @@ void Visualizer::displayPoses(const std::vector<Eigen::Isometry3d> &poses) {
         }
         pangolin::FinishFrame();
     }
+}
+
+void Visualizer::displayPoses(const std::vector<std::shared_ptr<Frame>> &frames) {
+    std::vector<Eigen::Isometry3d> poses;
+    for (auto pFrame: frames) {
+        poses.push_back(pFrame->pose_);
+    }
+
+    displayPoses(poses);
 }
 
 void Visualizer::drawGT(const std::vector<Eigen::Isometry3d> &_gt_poses) {
@@ -467,16 +478,52 @@ void Visualizer::run() {
 }
 
 void Visualizer::updateBuffer(const std::shared_ptr<Frame> &pFrame) {
-    newest_pointer_++;
-
     // lock buffer mutex
     std::lock_guard<std::mutex> lock(buffer_mutex_);
 
+    // first frame
+    if (newest_pointer_ == 0) {
+        std::shared_ptr<Frame> pPrev_frame = pFrame->pPrevious_frame_.lock();
+        est_pose_buffer_.push_back(pPrev_frame->pose_);
+    }
     est_pose_buffer_.push_back(pFrame->pose_);
     gt_buffer_.push_back(pUtils_->getGT(newest_pointer_));
 
     current_frame_ = pFrame;
+
+    newest_pointer_++;
 }
+
+void Visualizer::updateBuffer(const std::vector<std::shared_ptr<Frame>> &frames) {
+
+    // lock buffer mutex
+    std::lock_guard<std::mutex> lock(buffer_mutex_);
+
+    std::cout << "newest_pointer: " << newest_pointer_ << std::endl;
+
+    // first frame
+    if (newest_pointer_ == 0) {
+        std::shared_ptr<Frame> pFirst_frame = frames[0]->pPrevious_frame_.lock();
+        est_pose_buffer_.push_back(pFirst_frame->pose_);
+    }
+
+    // fix optimized poses
+    if (frames.size() == pConfig_->window_size_) {
+        std::cout << "fixing optimized poses" << std::endl;
+        for (int i = 0; i < frames.size() - 1; i++) {
+            int buffer_idx = frames[i]->id_;
+            std::cout << "buffer index: " << buffer_idx << std::endl;
+            est_pose_buffer_[buffer_idx] = frames[i]->pose_;
+        }
+    }
+    est_pose_buffer_.push_back(frames[frames.size() - 1]->pose_);
+    gt_buffer_.push_back(pUtils_->getGT(newest_pointer_));
+
+    current_frame_ = frames[frames.size() - 1];
+
+    newest_pointer_++;
+}
+
 
 
 

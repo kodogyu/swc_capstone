@@ -59,7 +59,7 @@ void Utils::drawReprojectedLandmarks(const std::vector<std::shared_ptr<Frame>> &
         cv::putText(frame_img, "frame" + std::to_string(pFrame->frame_image_idx_),
                                     cv::Point(0, 20), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
 
-        cv::imwrite("output_logs/reprojected_landmarks/frame" + std::to_string(pFrame->frame_image_idx_) + "_proj.png", frame_img);
+        cv::imwrite("output_logs/intra_frames/reprojected_landmarks/frame" + std::to_string(pFrame->frame_image_idx_) + "_proj.png", frame_img);
     }
 }
 
@@ -121,7 +121,7 @@ void Utils::drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
     cv::putText(result_image, "#inliers: " + std::to_string(inlier_cnt),
                                     cv::Point(0, 60), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
 
-    cv::imwrite("output_logs/reprojected_landmarks/frame" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + "frame" + std::to_string(pFrame->frame_image_idx_) + "_proj.png", result_image);
+    cv::imwrite("output_logs/inter_frames/reprojected_landmarks/frame" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + "frame" + std::to_string(pFrame->frame_image_idx_) + "_proj.png", result_image);
 }
 
 void Utils::drawKeypoints(std::shared_ptr<Frame> pFrame,

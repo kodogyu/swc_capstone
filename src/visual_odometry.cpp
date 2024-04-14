@@ -73,7 +73,7 @@ void VisualOdometry::run() {
         std::chrono::time_point<std::chrono::steady_clock> feature_extraction_end = std::chrono::steady_clock::now();
         // feature extraction cost (us)
         auto feature_extraction_diff = feature_extraction_end - feature_extraction_start;
-        auto feature_extraction_cost = std::chrono::duration_cast<std::chrono::microseconds>(feature_extraction_diff).count();
+        auto feature_extraction_cost = std::chrono::duration_cast<std::chrono::milliseconds>(feature_extraction_diff).count();
         feature_extraction_costs_.push_back(feature_extraction_cost);
 
         //**========== 2. Feature matching ==========**//
@@ -88,6 +88,14 @@ void VisualOdometry::run() {
         orb_matcher_->knnMatch(pCurr_frame->descriptors_, pPrev_frame->descriptors_, image_matches10_vec, 2);  // curr -> prev matches
 
         std::vector<cv::DMatch> good_matches;  // good matchings
+        // Mark I
+        // for (int i = 0; i < image_matches01_vec.size(); i++) {
+        //     if (image_matches01_vec[i][0].distance < image_matches01_vec[i][1].distance * pConfig_->des_dist_thresh_) {  // prev -> curr match에서 좋은가?
+        //         good_matches.push_back(image_matches01_vec[i][0]);
+        //     }
+        // }
+
+        // Mark II
         for (int i = 0; i < image_matches01_vec.size(); i++) {
             if (image_matches01_vec[i][0].distance < image_matches01_vec[i][1].distance * pConfig_->des_dist_thresh_) {  // prev -> curr match에서 좋은가?
                 int image1_keypoint_idx = image_matches01_vec[i][0].trainIdx;
@@ -151,7 +159,7 @@ void VisualOdometry::run() {
         std::chrono::time_point<std::chrono::steady_clock> feature_matching_end = std::chrono::steady_clock::now();
         // feature matching cost (us)
         auto feature_matching_diff = feature_matching_end - feature_matching_start;
-        auto feature_matching_cost = std::chrono::duration_cast<std::chrono::microseconds>(feature_matching_diff).count();
+        auto feature_matching_cost = std::chrono::duration_cast<std::chrono::milliseconds>(feature_matching_diff).count();
         feature_matching_costs_.push_back(feature_matching_cost);
 
         //**========== 3. Motion estimation ==========**//
@@ -189,15 +197,15 @@ void VisualOdometry::run() {
 
         std::vector<Eigen::Vector3d> keypoints_3d;
         // triangulate(camera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, relative_pose, keypoints_3d);
-        triangulate2(camera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, mask, keypoints_3d);
-        // triangulate3(camera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, mask, keypoints_3d);
+        // triangulate2(camera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, mask, keypoints_3d);
+        triangulate3(camera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, mask, keypoints_3d);
         pPrev_frame->keypoints_3d_ = keypoints_3d;
 
         // end timer [triangulation]
         std::chrono::time_point<std::chrono::steady_clock> triangulation_end = std::chrono::steady_clock::now();
         // motion estimation cost (us)
         auto triangulation_diff = triangulation_end - triangulation_start;
-        auto triangulation_cost = std::chrono::duration_cast<std::chrono::microseconds>(triangulation_diff).count();
+        auto triangulation_cost = std::chrono::duration_cast<std::chrono::milliseconds>(triangulation_diff).count();
         triangulation_costs_.push_back(triangulation_cost);
 
         std::vector<Eigen::Vector3d> triangulated_kps;
@@ -232,7 +240,7 @@ void VisualOdometry::run() {
             keypoints_3d_mat.at<double>(1, i) = pPrev_frame->keypoints_3d_[i].y();
             keypoints_3d_mat.at<double>(2, i) = pPrev_frame->keypoints_3d_[i].z();
         }
-        keypoints_3d_vec_.push_back(keypoints_3d_mat);
+        // keypoints_3d_vec_.push_back(keypoints_3d_mat);
 
         //**========== 6. Local optimization ==========**//
         // start timer [optimization]
@@ -258,7 +266,12 @@ void VisualOdometry::run() {
         optimization_costs_.push_back(optimization_cost);
 
         // update visualizer buffer
-        pVisualizer_->updateBuffer(pCurr_frame);
+        if (pConfig_->do_optimize_) {
+            pVisualizer_->updateBuffer(frame_window_);
+        }
+        else {
+            pVisualizer_->updateBuffer(pCurr_frame);
+        }
 
         // move on
         frames_.push_back(pCurr_frame);
@@ -266,28 +279,38 @@ void VisualOdometry::run() {
 
         // end timer [total time]
         std::chrono::time_point<std::chrono::steady_clock> total_time_end = std::chrono::steady_clock::now();
-        // total time cost (us)
+        // total time cost (ms)
         auto total_time_diff = total_time_end - total_time_start;
-        auto total_time_cost = std::chrono::duration_cast<std::chrono::microseconds>(total_time_diff).count();
+        auto total_time_cost = std::chrono::duration_cast<std::chrono::milliseconds>(total_time_diff).count();
         total_time_costs_.push_back(total_time_cost);
 
+        // logger_.logTrajectoryTxtAppend(pCurr_frame->pose_);
+        // logger_.logTimecostAppend(feature_extraction_cost,
+        //                     feature_matching_cost,
+        //                     motion_estimation_cost,
+        //                     triangulation_cost,
+        //                     scaling_cost,
+        //                     optimization_cost,
+        //                     total_time_cost);
     }
-    keypoints_3d_vec_.push_back(cv::Mat::zeros(3, 1, CV_64F));
-    // pUtils_->drawReprojectedLandmarks(frames_);
+    // keypoints_3d_vec_.push_back(cv::Mat::zeros(3, 1, CV_64F));
+    pUtils_->drawReprojectedLandmarks(frames_);
     // pUtils_->drawFramesLandmarks(frames_);
     // pUtils_->drawCorrespondingFeatures(frames_, 3, 2);
     std::cout << "total Landmarks: " << Landmark().total_landmark_cnt_ << std::endl;
 
     //**========== Log ==========**//
     // trajectory
-    logger_.logTrajectory(relative_poses_);
-    // logger_.logTrajectory(poses_);
+    // logger_.logTrajectory(relative_poses_);
+    logger_.logTrajectory(poses_);
+    // logger_.logTrajectory(aligned_est_poses);
+    logger_.logTrajectoryTxt(poses_);
 
     // keypoints
-    logger_.logKeypoints(keypoints_3d_vec_);
+    // logger_.logKeypoints(keypoints_3d_vec_);
 
     // landmarks
-    logger_.logLandmarks(frames_);
+    // logger_.logLandmarks(frames_);
 
     // time cost[us]
     logger_.logTimecosts(feature_extraction_costs_,
@@ -318,7 +341,8 @@ void VisualOdometry::run() {
     //**========== Visualize ==========**//
     switch(pConfig_->display_type_) {
         case DisplayType::POSE_ONLY:
-            pVisualizer_->displayPoses(poses_);
+            // pVisualizer_->displayPoses(poses_);
+            pVisualizer_->displayPoses(frames_);
             break;
         case DisplayType::POSE_AND_LANDMARKS:
             pVisualizer_->displayFramesAndLandmarks(frames_);

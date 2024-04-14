@@ -3,15 +3,16 @@
 #include "common_includes.hpp"
 
 enum DisplayType {
-    POSE_ONLY,
-    POSE_AND_LANDMARKS,
-    ALIGNED_POSE,
-    REALTIME_VIS
+    POSE_ONLY = 0,
+    POSE_AND_LANDMARKS = 1,
+    ALIGNED_POSE = 2,
+    REALTIME_VIS = 3
 };
 
 enum FilterMode {
-    KEYPOINT_FILTERING,
-    MATCH_FILTERING
+    NO_FILTERING = 0,
+    KEYPOINT_FILTERING = 1,
+    MATCH_FILTERING = 2
 };
 
 class Configuration {

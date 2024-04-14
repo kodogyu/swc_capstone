@@ -50,6 +50,7 @@ void Configuration::parse() {
 void Configuration::getImageEntries() {
     std::filesystem::directory_iterator left_images_itr(left_images_dir_);
     std::vector<std::string> left_image_entries_temp;
+    int frame_cnt = 0;
 
     // this reads all image entries.
     while (left_images_itr != std::filesystem::end(left_images_itr)) {
@@ -58,9 +59,14 @@ void Configuration::getImageEntries() {
         left_image_entries_temp.push_back(left_image_entry.path());
 
         left_images_itr++;
+        frame_cnt++;
     }
     // sort entry vectors
     std::sort(left_image_entries_temp.begin(), left_image_entries_temp.end());
+
+    if (num_frames_ == -1) {
+        num_frames_ = frame_cnt - frame_offset_;
+    }
 
     // take only what we want
     left_image_entries_.insert(left_image_entries_.begin(),
