@@ -213,7 +213,7 @@ void VisualOdometry::run() {
 
         std::vector<Eigen::Vector3d> keypoints_3d;
         // triangulate(camera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, relative_pose, keypoints_3d);
-        // triangulate2(camera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, mask, keypoints_3d);
+        // triangulate2(pCamera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, pose_mask, keypoints_3d);
         triangulate3(pCamera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, pose_mask, keypoints_3d);
         pPrev_frame->keypoints_3d_ = keypoints_3d;
 
@@ -236,10 +236,10 @@ void VisualOdometry::run() {
         // start timer [scaling]
         std::chrono::time_point<std::chrono::steady_clock> scaling_start = std::chrono::steady_clock::now();
 
-        std::vector<int> scale_mask(pCurr_frame->keypoints_.size(), 1);
-        double est_scale_ratio = estimateScale(pPrev_frame, pCurr_frame, scale_mask);
-        double gt_scale_ratio = getGTScale(pCurr_frame);
-        std::cout << "estimated scale: " << est_scale_ratio << ". GT scale: " << gt_scale_ratio << std::endl;
+        // std::vector<int> scale_mask(pCurr_frame->keypoints_.size(), 1);
+        // double est_scale_ratio = estimateScale(pPrev_frame, pCurr_frame, scale_mask);
+        // double gt_scale_ratio = getGTScale(pCurr_frame);
+        // std::cout << "estimated scale: " << est_scale_ratio << ". GT scale: " << gt_scale_ratio << std::endl;
         // scales_.push_back(scale_ratio);
         // applyScale(pCurr_frame, scale_ratio, scale_mask);
 
@@ -320,7 +320,8 @@ void VisualOdometry::run() {
     // logger_.logTrajectory(relative_poses_);
     logger_.logTrajectory(poses_);
     // logger_.logTrajectory(aligned_est_poses);
-    logger_.logTrajectoryTxt(poses_);
+    // logger_.logTrajectoryTxt(poses_);
+    logger_.logTrajectoryTxt(frames_);
 
     // keypoints
     // logger_.logKeypoints(keypoints_3d_vec_);

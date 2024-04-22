@@ -36,6 +36,19 @@ void Logger::logTrajectoryTxt(std::vector<Eigen::Isometry3d> poses) const {
     }
 }
 
+void Logger::logTrajectoryTxt(std::vector<std::shared_ptr<Frame>> frames) const {
+    std::ofstream trajectory_file(trajectory_file_path_txt_);
+    // trajectory_file << "qw,qx,qy,qz,x,y,z\n";
+    for (auto pFrame : frames) {
+        Eigen::Isometry3d pose = pFrame->pose_;
+        Eigen::Matrix3d rotation = pose.rotation();
+        Eigen::Vector3d position = pose.translation();
+        trajectory_file << rotation(0, 0) << " " << rotation(0, 1) << " " << rotation(0, 2) << " " << position.x() << " "
+                    << rotation(1, 0) << " " << rotation(1, 1) << " " << rotation(1, 2) << " " << position.y() << " "
+                    << rotation(2, 0) << " " << rotation(2, 1) << " " << rotation(2, 2) << " " << position.z() << "\n";
+    }
+}
+
 void Logger::logTrajectoryTxtAppend(Eigen::Isometry3d pose) {
     // trajectory_file << "qw,qx,qy,qz,x,y,z\n";
     Eigen::Matrix3d rotation = pose.rotation();

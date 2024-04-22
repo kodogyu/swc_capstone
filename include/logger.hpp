@@ -9,6 +9,7 @@ public:
 
     void logTrajectory(std::vector<Eigen::Isometry3d> poses) const;
     void logTrajectoryTxt(std::vector<Eigen::Isometry3d> poses) const;
+    void logTrajectoryTxt(std::vector<std::shared_ptr<Frame>> frames) const;
     void logTrajectoryTxtAppend(Eigen::Isometry3d pose);
     void logKeypoints(std::vector<cv::Mat> keypoints_3d_vec) const;
     void logLandmarks(std::vector<std::shared_ptr<Frame>> frames) const;

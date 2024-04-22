@@ -90,16 +90,16 @@ num_features: 3000
 #   0: no filtering
 #   1: keypoint filtering
 #   2: match filtering
-filtering_mode: 0
+filtering_mode: 2
 patch_width: 50
 patch_height: 50
-kps_per_patch: 15
+kps_per_patch: 70
 
 #========== Feature matching ==========#
 des_dist_thresh: 0.6
 
 #========== Optimization ==========#
-do_optimize: 1
+do_optimize: 0
 window_size: 5
 optimizer_verbose: 0
 
