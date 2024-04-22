@@ -65,7 +65,8 @@ void Utils::drawReprojectedLandmarks(const std::vector<std::shared_ptr<Frame>> &
 
 void Utils::drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
                                     const std::vector<cv::DMatch> &good_matches,
-                                    const cv::Mat &mask,
+                                    const cv::Mat &essential_mask,
+                                    const cv::Mat &pose_mask,
                                     const std::vector<Eigen::Vector3d> &triangulated_kps) {
     std::shared_ptr<Frame> pPrev_frame = pFrame->pPrevious_frame_.lock();
 
@@ -76,8 +77,13 @@ void Utils::drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
     std::vector<cv::Point2f> prev_projected_pts, curr_projected_pts;
     reprojectLandmarks(pFrame, good_matches, cv::Mat(), triangulated_kps, prev_projected_pts, curr_projected_pts);
 
-    int inlier_cnt = 0;
+    int essential_inlier_cnt = 0;
+    int pose_inlier_cnt = 0;
     for (int i = 0; i < good_matches.size(); i++) {
+        if (essential_mask.at<unsigned char>(i) != 1) {
+            continue;
+        }
+
         cv::Point2f measurement_point0 = pPrev_frame->keypoints_[good_matches[i].queryIdx].pt;
         cv::Point2f measurement_point1 = pFrame->keypoints_[good_matches[i].trainIdx].pt;
 
@@ -85,30 +91,31 @@ void Utils::drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
         cv::rectangle(prev_frame_img,
                     measurement_point0 - cv::Point2f(5, 5),
                     measurement_point0 + cv::Point2f(5, 5),
-                    mask.at<unsigned char>(i) == 1 ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 255, 255));  // green, (yellow)
+                    pose_mask.at<unsigned char>(i) == 1 ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 255, 255));  // green, (yellow)
         cv::circle(prev_frame_img,
                     prev_projected_pts[i],
                     2,
-                    mask.at<unsigned char>(i) == 1 ? cv::Scalar(0, 0, 255) : cv::Scalar(255, 0, 0));  // red, (blue)
+                    pose_mask.at<unsigned char>(i) == 1 ? cv::Scalar(0, 0, 255) : cv::Scalar(255, 0, 0));  // red, (blue)
         cv::line(prev_frame_img,
                     measurement_point0,
                     prev_projected_pts[i],
-                    mask.at<unsigned char>(i) == 1 ? cv::Scalar(0, 0, 255) : cv::Scalar(255, 0, 0));  // red, (blue)
+                    pose_mask.at<unsigned char>(i) == 1 ? cv::Scalar(0, 0, 255) : cv::Scalar(255, 0, 0));  // red, (blue)
         cv::rectangle(curr_frame_img,
                     measurement_point1 - cv::Point2f(5, 5),
                     measurement_point1 + cv::Point2f(5, 5),
-                    mask.at<unsigned char>(i) == 1 ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 255, 255));  // green, (yellow)
+                    pose_mask.at<unsigned char>(i) == 1 ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 255, 255));  // green, (yellow)
         cv::circle(curr_frame_img,
                     curr_projected_pts[i],
                     2,
-                    mask.at<unsigned char>(i) == 1 ? cv::Scalar(0, 0, 255) : cv::Scalar(255, 0, 0));  // red, (blue)
+                    pose_mask.at<unsigned char>(i) == 1 ? cv::Scalar(0, 0, 255) : cv::Scalar(255, 0, 0));  // red, (blue)
         cv::line(curr_frame_img,
                     measurement_point1,
                     curr_projected_pts[i],
-                    mask.at<unsigned char>(i) == 1 ? cv::Scalar(0, 0, 255) : cv::Scalar(255, 0, 0));  // red, (blue)
+                    pose_mask.at<unsigned char>(i) == 1 ? cv::Scalar(0, 0, 255) : cv::Scalar(255, 0, 0));  // red, (blue)
 
-        if (mask.at<unsigned char>(i) == 1) {
-            inlier_cnt++;
+        essential_inlier_cnt++;
+        if (pose_mask.at<unsigned char>(i) == 1) {
+            pose_inlier_cnt++;
         }
     }
     cv::Mat result_image;
@@ -116,9 +123,9 @@ void Utils::drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
 
     cv::putText(result_image, "frame" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + std::to_string(pFrame->frame_image_idx_),
                                 cv::Point(0, 20), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
-    cv::putText(result_image, "#matched landmarks: " + std::to_string(good_matches.size()),
+    cv::putText(result_image, "#essential inliers / matched features: " + std::to_string(essential_inlier_cnt) + " / " + std::to_string(good_matches.size()),
                                     cv::Point(0, 40), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
-    cv::putText(result_image, "#inliers: " + std::to_string(inlier_cnt),
+    cv::putText(result_image, "#recover pose inliers: " + std::to_string(pose_inlier_cnt),
                                     cv::Point(0, 60), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
 
     cv::imwrite("output_logs/inter_frames/reprojected_landmarks/frame" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + "frame" + std::to_string(pFrame->frame_image_idx_) + "_proj.png", result_image);

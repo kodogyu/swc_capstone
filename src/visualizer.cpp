@@ -499,7 +499,6 @@ void Visualizer::updateBuffer(const std::vector<std::shared_ptr<Frame>> &frames)
     // lock buffer mutex
     std::lock_guard<std::mutex> lock(buffer_mutex_);
 
-    std::cout << "newest_pointer: " << newest_pointer_ << std::endl;
 
     // first frame
     if (newest_pointer_ == 0) {
@@ -509,10 +508,8 @@ void Visualizer::updateBuffer(const std::vector<std::shared_ptr<Frame>> &frames)
 
     // fix optimized poses
     if (frames.size() == pConfig_->window_size_) {
-        std::cout << "fixing optimized poses" << std::endl;
         for (int i = 0; i < frames.size() - 1; i++) {
             int buffer_idx = frames[i]->id_;
-            std::cout << "buffer index: " << buffer_idx << std::endl;
             est_pose_buffer_[buffer_idx] = frames[i]->pose_;
         }
     }

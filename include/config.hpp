@@ -36,11 +36,14 @@ public:
     bool is_kitti_;
 
     // Camera
+    bool is_fisheye_;
     double fx_;
     double fy_;
     double s_;
     double cx_;
     double cy_;
+    double xi_ = 0;
+    double k1_ = 0, k2_ = 0, p1_ = 0, p2_ = 0, k3_ = 0;
 
     // Visualize
     int display_type_;  // 0: pose only, 1: pose & landmarks, 2: pose only (aligned with gt)
@@ -62,6 +65,7 @@ public:
     bool optimizer_verbose_;
 
     // Test
+    bool test_mode_;
     bool calc_reprojection_error_;
     bool print_conf_;
 };

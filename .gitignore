@@ -1,8 +1,12 @@
 # vscode
 .vscode/
 
+# build
+build/*
+
 # output logs
 output_logs/*
 
-# build
-build/*
+# evaluation images
+evaluations/match_filter_trian3_BA/*
+evaluations/no_filter_trian3_BA/*

@@ -6,13 +6,14 @@ set(CMAKE_BUILD_TYPE Debug)
 
 ##=========================DEPENDENCIES=========================##
 find_package(Eigen3 REQUIRED)
-find_package(GTSAM REQUIRED)
+find_package(GTSAM REQUIRED)    # -DGTSAM_DIR=/usr/local/lib/cmake/GTSAM
 find_package(OpenCV 4 REQUIRED)   # -DOpenCV_DIR=/home/kodogyu/opencv/build
 find_package(Sophus REQUIRED)
 find_package(Pangolin 0.8 REQUIRED)
 
 message(STATUS "opencv version: ${OpenCV_VERSION}")
 message(STATUS "gtsam path: ${GTSAM_DIR}")
+message(STATUS "gtsam version: ${GTSAM_VERSION}")
 
 include_directories(
     ${EIGEN3_INCLUDE_DIRS}
@@ -30,6 +31,7 @@ add_executable(visual_odometry
     src/logger.cpp
     src/main.cpp
     src/optimizer.cpp
+    src/tester.cpp
     src/utils.cpp
     src/visual_odometry.cpp
     src/visualizer.cpp)

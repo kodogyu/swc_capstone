@@ -1,17 +1,17 @@
 #include "visual_odometry.hpp"
 
 VisualOdometry::VisualOdometry(std::string config_path) {
-    //**========== Parse config_ file ==========**//
+    // parse config file
     pConfig_ = std::make_shared<Configuration>(config_path);
     pConfig_->parse();
 
-    //**========== Initialize variables ==========**//
-    camera_ = std::make_shared<Camera>(pConfig_->fx_, pConfig_->fy_, pConfig_->s_, pConfig_->cx_, pConfig_->cy_);
-    orb_ = cv::ORB::create(pConfig_->num_features_, 1.2, 8, 31, 0, 2, cv::ORB::HARRIS_SCORE, 31, 25);
-    orb_matcher_ = cv::DescriptorMatcher::create(cv::DescriptorMatcher::BRUTEFORCE);
-
+    // initialize variables
+    pCamera_ = std::make_shared<Camera>(pConfig_);
     pUtils_ = std::make_shared<Utils>(pConfig_);
     pVisualizer_ = std::make_shared<Visualizer>(pConfig_, pUtils_);
+
+    orb_ = cv::ORB::create(pConfig_->num_features_, 1.2, 8, 31, 0, 2, cv::ORB::HARRIS_SCORE, 31, 25);
+    orb_matcher_ = cv::DescriptorMatcher::create(cv::DescriptorMatcher::BRUTEFORCE);
 }
 
 void VisualOdometry::run() {
@@ -20,11 +20,13 @@ void VisualOdometry::run() {
     cv::Mat image0_left, image1_left;
 
     image0_left = cv::imread(pConfig_->left_image_entries_[0], cv::IMREAD_GRAYSCALE);
+    // image0_left = readImage(0);
+
     poses_.push_back(Eigen::Isometry3d::Identity());
     std::shared_ptr<Frame> pPrev_frame = std::make_shared<Frame>();
     pPrev_frame->image_ = image0_left;
     pPrev_frame->frame_image_idx_ = pConfig_->frame_offset_;
-    pPrev_frame->pCamera_ = camera_;
+    pPrev_frame->pCamera_ = pCamera_;
     frames_.push_back(pPrev_frame);
 
     for (int i = 1; i < pConfig_->num_frames_; i++) {
@@ -32,11 +34,12 @@ void VisualOdometry::run() {
         std::chrono::time_point<std::chrono::steady_clock> total_time_start = std::chrono::steady_clock::now();
 
         image1_left = cv::imread(pConfig_->left_image_entries_[i], cv::IMREAD_GRAYSCALE);
+        // image1_left = readImage(i);
         // new Frame!
         std::shared_ptr<Frame> pCurr_frame = std::make_shared<Frame>();
         pCurr_frame->image_ = image1_left;
         pCurr_frame->frame_image_idx_ = pConfig_->frame_offset_ + i;
-        pCurr_frame->pCamera_ = camera_;
+        pCurr_frame->pCamera_ = pCamera_;
         pCurr_frame->pPrevious_frame_ = pPrev_frame;
         pPrev_frame->pNext_frame_ = pCurr_frame;
 
@@ -141,12 +144,12 @@ void VisualOdometry::run() {
             image1_kps.push_back(pCurr_frame->keypoints_[match.trainIdx]);
         }
 
-        cv::Mat mask;
-        cv::Mat essential_mat = cv::findEssentialMat(image1_kp_pts, image0_kp_pts, camera_->intrinsic_, cv::RANSAC, 0.999, 1.0, mask);
+        cv::Mat essential_mask;
+        cv::Mat essential_mat = cv::findEssentialMat(image1_kp_pts, image0_kp_pts, pCamera_->intrinsic_, cv::RANSAC, 0.999, 1.0, essential_mask);
         cv::Mat ransac_matches;
         cv::drawMatches(pPrev_frame->image_, pPrev_frame->keypoints_,
                         pCurr_frame->image_, pCurr_frame->keypoints_,
-                        good_matches, ransac_matches, cv::Scalar::all(-1), cv::Scalar::all(-1), mask, cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
+                        good_matches, ransac_matches, cv::Scalar::all(-1), cv::Scalar::all(-1), essential_mask, cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
         cv::putText(ransac_matches, "frame" + std::to_string(pPrev_frame->frame_image_idx_) + " & frame" + std::to_string(pCurr_frame->frame_image_idx_),
                                     cv::Point(0, 20), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
         cv::imwrite("output_logs/inter_frames/frame"
@@ -154,6 +157,14 @@ void VisualOdometry::run() {
                 + "&"
                 + std::to_string(pCurr_frame->frame_image_idx_)
                 + "_kp_matches(ransac).png", ransac_matches);
+
+        int essential_inliers = 0;
+        for (int i = 0; i < essential_mask.rows; i++) {
+            if (essential_mask.at<unsigned char>(i) == 1) {
+                essential_inliers++;
+            }
+        }
+        std::cout << "essential inliers / matches: " << essential_inliers << " / " << good_matches.size() << std::endl;
 
         // end timer [feature matching]
         std::chrono::time_point<std::chrono::steady_clock> feature_matching_end = std::chrono::steady_clock::now();
@@ -166,9 +177,15 @@ void VisualOdometry::run() {
         // start timer [motion estimation]
         std::chrono::time_point<std::chrono::steady_clock> motion_estimation_start = std::chrono::steady_clock::now();
 
+        cv::Mat pose_mask = essential_mask.clone();
         Eigen::Isometry3d relative_pose;
         cv::Mat R, t;
-        cv::recoverPose(essential_mat, image1_kp_pts, image0_kp_pts, camera_->intrinsic_, R, t, mask);
+        cv::recoverPose(essential_mat, image1_kp_pts, image0_kp_pts, pCamera_->intrinsic_, R, t, pose_mask);
+
+        // TEST
+        if (pConfig_->test_mode_) {
+            tester_.decomposeEssentialMat(essential_mat, pCurr_frame->pCamera_->intrinsic_, image0_kp_pts, image1_kp_pts, essential_mask, R, t);
+        }
 
         Eigen::Matrix3d rotation_mat;
         Eigen::Vector3d translation_mat;
@@ -176,7 +193,6 @@ void VisualOdometry::run() {
         cv::cv2eigen(t, translation_mat);
         gtsam::Rot3 rotation = gtsam::Rot3(rotation_mat);
         gtsam::Point3 translation = gtsam::Point3(translation_mat);
-        // relative_pose = gtsam::Pose3(gtsam::Rot3(rotation_mat), gtsam::Point3(translation_mat));
         relative_pose.linear() = rotation_mat;
         relative_pose.translation() = translation_mat;
         pCurr_frame->relative_pose_ = relative_pose;
@@ -198,7 +214,7 @@ void VisualOdometry::run() {
         std::vector<Eigen::Vector3d> keypoints_3d;
         // triangulate(camera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, relative_pose, keypoints_3d);
         // triangulate2(camera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, mask, keypoints_3d);
-        triangulate3(camera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, mask, keypoints_3d);
+        triangulate3(pCamera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, pose_mask, keypoints_3d);
         pPrev_frame->keypoints_3d_ = keypoints_3d;
 
         // end timer [triangulation]
@@ -210,9 +226,9 @@ void VisualOdometry::run() {
 
         std::vector<Eigen::Vector3d> triangulated_kps;
         triangulateKeyPoints(pCurr_frame, image0_kp_pts, image1_kp_pts, triangulated_kps);
-        pUtils_->drawReprojectedLandmarks(pCurr_frame, good_matches, mask, triangulated_kps);
+        pUtils_->drawReprojectedLandmarks(pCurr_frame, good_matches, essential_mask,  pose_mask, triangulated_kps);
         if (pConfig_->calc_reprojection_error_) {
-            double reprojection_error = pUtils_->calcReprojectionError(pCurr_frame, good_matches, mask, triangulated_kps);
+            double reprojection_error = pUtils_->calcReprojectionError(pCurr_frame, good_matches, pose_mask, triangulated_kps);
             std::cout << "reprojection error: " << reprojection_error << std::endl;
         }
 
@@ -220,11 +236,11 @@ void VisualOdometry::run() {
         // start timer [scaling]
         std::chrono::time_point<std::chrono::steady_clock> scaling_start = std::chrono::steady_clock::now();
 
-        // std::vector<int> scale_mask(pCurr_frame->keypoints_.size(), 1);
-        // // double scale_ratio = estimateScale(pPrev_frame, pCurr_frame, scale_mask);
-        // std::cout << "get GT scale" << std::endl;
-        // double scale_ratio = getGTScale(pCurr_frame);
-        // scales.push_back(scale_ratio);
+        std::vector<int> scale_mask(pCurr_frame->keypoints_.size(), 1);
+        double est_scale_ratio = estimateScale(pPrev_frame, pCurr_frame, scale_mask);
+        double gt_scale_ratio = getGTScale(pCurr_frame);
+        std::cout << "estimated scale: " << est_scale_ratio << ". GT scale: " << gt_scale_ratio << std::endl;
+        // scales_.push_back(scale_ratio);
         // applyScale(pCurr_frame, scale_ratio, scale_mask);
 
         // end timer [scaling]
@@ -351,6 +367,26 @@ void VisualOdometry::run() {
             pVisualizer_->displayPoses(aligned_est_poses);
             break;
     }
+}
+
+cv::Mat VisualOdometry::readImage(int img_entry_idx) {
+    cv::Mat result;
+
+    // read the image
+    cv::Mat image = cv::imread(pConfig_->left_image_entries_[img_entry_idx], cv::IMREAD_GRAYSCALE);
+
+    cv::undistort(image, result, pCamera_->intrinsic_, pCamera_->distortion_);
+
+    // fisheye image processing (rectification)
+    if (pConfig_->is_fisheye_) {
+        cv::Size new_size(640, 480);
+        cv::Mat Knew = (cv::Mat_<double>(3, 3) << new_size.width/4, 0, new_size.width/2,
+                                                0, new_size.height/4, new_size.height/2,
+                                                0, 0, 1);
+        cv::omnidir::undistortImage(image, result, pCamera_->intrinsic_, pCamera_->distortion_, pCamera_->xi_, cv::omnidir::RECTIFY_PERSPECTIVE, Knew, new_size);
+    }
+
+    return result;
 }
 
 void VisualOdometry::triangulate(cv::Mat camera_Matrix, std::shared_ptr<Frame> &pPrev_frame, std::shared_ptr<Frame> &pCurr_frame, std::vector<cv::DMatch> good_matches, Eigen::Isometry3d relative_pose, std::vector<Eigen::Vector3d> &frame_keypoints_3d) {
@@ -529,8 +565,10 @@ void VisualOdometry::triangulate3(cv::Mat camera_Matrix, std::shared_ptr<Frame> 
 
                 pPrev_frame->landmarks_.push_back(pLandmark);
                 pPrev_frame->keypoint_landmark_[good_matches[i].queryIdx] = std::pair(pPrev_frame->landmarks_.size() - 1, pLandmark->id_);
+                pPrev_frame->keypoints_3d_[good_matches[i].queryIdx] = w_keypoint_3d;
                 pCurr_frame->landmarks_.push_back(pLandmark);
                 pCurr_frame->keypoint_landmark_[good_matches[i].trainIdx] = std::pair(pCurr_frame->landmarks_.size() - 1, pLandmark->id_);
+                pCurr_frame->keypoints_3d_[good_matches[i].trainIdx] = w_keypoint_3d;
             }
             else if (landmark_accepted) {
                 // add information to curr_frame
@@ -538,6 +576,7 @@ void VisualOdometry::triangulate3(cv::Mat camera_Matrix, std::shared_ptr<Frame> 
                 int landmark_id = prev_frame_kp_lm.second;
                 pCurr_frame->landmarks_.push_back(pPrev_frame->landmarks_[prev_frame_kp_lm.first]);
                 pCurr_frame->keypoint_landmark_[good_matches[i].trainIdx] = std::pair(pCurr_frame->landmarks_.size(), landmark_id);
+                pCurr_frame->keypoints_3d_[good_matches[i].trainIdx] = w_keypoint_3d;
 
                 // add information to the landmark
                 std::shared_ptr<Landmark> pLandmark = pPrev_frame->landmarks_[prev_frame_kp_lm.first];
@@ -660,42 +699,22 @@ double VisualOdometry::getGTScale(std::shared_ptr<Frame> pFrame) {
     if (pFrame->id_ == 1) {
         return 1.0;
     }
-
-    std::cout << "reading file" << std::endl;
-    std::ifstream gt_poses__file("/home/kodogyu/Datasets/KITTI/dataset/poses_/00.txt");
-    std::cout << "reading file done" << std::endl;
-    std::string line;
-    double r11, r12, r13, r21, r22, r23, r31, r32, r33, t1, t2, t3;
     int curr_id = pFrame->id_;
     int prev_id = curr_id - 1;
     int pprev_id = curr_id - 2;
-    Eigen::Vector3d pprev_position, prev_position, curr_position;
 
-    for (int i = 0; i < pFrame->id_; i++) {
-        std::getline(gt_poses__file, line);
-        std::stringstream ssline(line);
+    Eigen::Isometry3d pprev_pose, prev_pose, curr_pose;
 
-        // KITTI format
-        ssline
-            >> r11 >> r12 >> r13 >> t1
-            >> r21 >> r22 >> r23 >> t2
-            >> r31 >> r32 >> r33 >> t3;
+    std::cout << "reading file" << std::endl;
+    pprev_pose = pUtils_->getGT(pprev_id);
+    prev_pose = pUtils_->getGT(prev_id);
+    curr_pose = pUtils_->getGT(curr_id);
 
-        if (i == pprev_id) {
-            pprev_position << t1, t2, t3;
-            std::cout << "pprev position: " << pprev_position << std::endl;
-        }
-        else if (i == prev_id) {
-            prev_position << t1, t2, t3;
-            std::cout << "prev position: " << prev_position << std::endl;
-        }
-        else if (i == curr_id) {
-            curr_position << t1, t2, t3;
-            std::cout << "curr position: " << curr_position << std::endl;
-        }
-    }
+    std::cout << "pprev pose: " << pprev_pose.matrix() << std::endl;
+    std::cout << "prev pose: " << prev_pose.matrix() << std::endl;
+    std::cout << "curr pose: " << curr_pose.matrix() << std::endl;
 
-    double gt_scale = (curr_position - prev_position).norm() / (prev_position - pprev_position).norm();
+    double gt_scale = (curr_pose.translation() - prev_pose.translation()).norm() / (prev_pose.translation() - pprev_pose.translation()).norm();
     return gt_scale;
 }
 

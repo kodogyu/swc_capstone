@@ -4,7 +4,7 @@ void Configuration::parse() {
     cv::FileStorage config_file(config_path_, cv::FileStorage::READ);
     CV_Assert(config_file.isOpened());
 
-    // Datatset
+    // Dataset
     num_frames_ = config_file["num_frames"];
     frame_offset_ = config_file["frame_offset"];
     left_images_dir_ = config_file["left_images_dir"];
@@ -13,11 +13,26 @@ void Configuration::parse() {
     is_kitti_ = static_cast<bool>(static_cast<int>(config_file["is_kitti"]));
 
     // Camera
-    fx_ = config_file["fx"];
-    fy_ = config_file["fy"];
+    is_fisheye_ = static_cast<bool>(static_cast<int>(config_file["is_fisheye"]));
+    if (is_fisheye_) {
+        fx_ = config_file["gamma1"];
+        fy_ = config_file["gamma2"];
+        cx_ = config_file["u0"];
+        cy_ = config_file["v0"];
+        xi_ = config_file["xi"];
+    }
+    else {
+        fx_ = config_file["fx"];
+        fy_ = config_file["fy"];
+        cx_ = config_file["cx"];
+        cy_ = config_file["cy"];
+    }
     s_ = config_file["s"];
-    cx_ = config_file["cx"];
-    cy_ = config_file["cy"];
+    k1_ = config_file["k1"];
+    k2_ = config_file["k2"];
+    p1_ = config_file["p1"];
+    p2_ = config_file["p2"];
+    k3_ = config_file["k3"];
 
     // Visualize
     display_type_ = config_file["display_type"];
@@ -41,8 +56,9 @@ void Configuration::parse() {
     // Test
     calc_reprojection_error_ = static_cast<bool>(static_cast<int>(config_file["calc_reprojection_error"]));
     print_conf_ = static_cast<bool>(static_cast<int>(config_file["print_conf"]));
+    test_mode_ = static_cast<bool>(static_cast<int>(config_file["test_mode"]));
 
-    if (print_conf_) {
+    if (test_mode_ || print_conf_) {
         print();
     }
 }
@@ -75,8 +91,14 @@ void Configuration::getImageEntries() {
 }
 
 void Configuration::print() {
+    if (test_mode_) {
+        std::cout << "========================================\n"
+                << "============= TEST MODE ON =============\n"
+                << "========================================\n\n";
+    }
+
     std::cout << "========== Configuration List ==========" << std::endl;
-    // Datatset
+    // Dataset
     std::cout << "[Dataset]" << std::endl;
     std::cout << "num_frames: " << num_frames_ << "\n"
             << "frame_offset: " << frame_offset_ << "\n"
@@ -86,11 +108,18 @@ void Configuration::print() {
 
     // Camera
     std::cout << "[Camera]" << std::endl;
-    std::cout << "fx: " << fx_ << "\n"
+    std::cout << "is_fisheye: " << is_fisheye_ << "\n"
+            << "fx: " << fx_ << "\n"
             << "fy: " << fy_ << "\n"
             << "s: " << s_ << "\n"
             << "cx: " << cx_ << "\n"
-            << "cy: " << cy_ << "\n\n";
+            << "cy: " << cy_ << "\n"
+            << "xi: " << xi_ << "\n"
+            << "k1: " << k1_ << "\n"
+            << "k2: " << k2_ << "\n"
+            << "p1: " << p1_ << "\n"
+            << "p2: " << p2_ << "\n"
+            << "k3: " << k3_ << "\n\n";
 
     // Visualize
     std::cout << "[Visualize]" << std::endl;
@@ -118,6 +147,8 @@ void Configuration::print() {
 
     // Test
     std::cout << "[Test]" << std::endl;
+    std::cout << "test_mode: " << test_mode_ << "\n";
+    std::cout << "print_conf: " << print_conf_ << "\n";
     std::cout << "calc_reprojection_error: " << calc_reprojection_error_ << "\n\n";
     std::cout << "========================================" << std::endl;
 }

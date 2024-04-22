@@ -12,29 +12,62 @@ frame_offset: 0
 # gt_path: /home/kodogyu/Datasets/KITTI-360/data_poses/2013_05_28_drive_0000_sync/cam0_to_world.txt
 
 # # perspective image
+# left_images_dir: /home/kodogyu/Datasets/KITTI-360/data_2d_raw/2013_05_28_drive_0000_sync/image_00/data_rgb
+
+# # perspective image (rect)
 # left_images_dir: /home/kodogyu/Datasets/KITTI-360/data_2d_raw/2013_05_28_drive_0000_sync/image_00/data_rect
-# right_images_dir: /home/kodogyu/Datasets/KITTI-360/data_2d_raw/2013_05_28_drive_0000_sync/image_01/data_rect
 
 # # fisheye image
 # left_images_dir: /home/kodogyu/Datasets/KITTI-360/data_2d_raw/2013_05_28_drive_0000_sync/image_02/data_rgb
-# right_images_dir: /home/kodogyu/Datasets/KITTI-360/data_2d_raw/2013_05_28_drive_0000_sync/image_03/data_rgb
+
 
 # KITTI
 is_kitti: 1
 gt_path: /home/kodogyu/Datasets/KITTI/dataset/poses/00.txt
 
 left_images_dir: /home/kodogyu/Datasets/KITTI/dataset/sequences/00/image_0
-right_images_dir: /home/kodogyu/Datasets/KITTI/dataset/sequences/00/image_1
 
 #========== Camera parameters ==========#
+
 # # KITTI-360
+# # perspective camera
+# is_fisheye: 0
 # fx: 788.629315
 # fy: 786.382230
 # s: 0.0
 # cx: 687.158398
 # cy: 317.752196
+# k1: -0.344441
+# k2: 0.141678
+# p1: 0.000414
+# p2: -0.000222
+# k3: -0.029608
+
+# # perspective camera (rectified)
+# is_fisheye: 0
+# fx: 552.554261
+# fy: 552.554261
+# s: 0.0
+# cx: 682.049453
+# cy: 238.769549
+
+
+# # fisheye camera (MEI)
+# is_fisheye: 1
+# gamma1: 1.3363220825849971e+03
+# gamma2: 1.3357883350012958e+03
+# s: 0.0
+# u0: 7.1694323510126321e+02
+# v0: 7.0576498308221585e+02
+# xi: 2.2134047507854890e+00
+# k1: 1.6798235660113681e-02
+# k2: 1.6548773243373522e+00
+# p1: 4.2223943394772046e-04
+# p2: 4.2462134260997584e-04
+
 
 # KITTI
+is_fisheye: 0
 fx: 718.856
 fy: 718.856
 s: 0.0
@@ -60,7 +93,7 @@ num_features: 3000
 filtering_mode: 0
 patch_width: 50
 patch_height: 50
-kps_per_patch: 70
+kps_per_patch: 15
 
 #========== Feature matching ==========#
 des_dist_thresh: 0.6
@@ -72,6 +105,7 @@ optimizer_verbose: 0
 
 
 #========== Test ==========#
+test_mode: 0
 calc_reprojection_error: 1
 print_conf: 1
 

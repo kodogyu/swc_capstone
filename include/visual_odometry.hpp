@@ -6,6 +6,7 @@
 #include <sstream>
 
 #include <opencv2/calib3d.hpp>
+#include <opencv2/ccalib/omnidir.hpp>
 
 #include <gtsam/geometry/Pose3.h>
 
@@ -17,12 +18,14 @@
 #include "config.hpp"
 #include "utils.hpp"
 #include "logger.hpp"
+#include "tester.hpp"
 
 class VisualOdometry {
 public:
     VisualOdometry(std::string config_path);
 
     void run();
+    cv::Mat readImage(int img_entry_idx);
     void triangulate(cv::Mat cameraMatrix, std::shared_ptr<Frame> &pPrev_frame, std::shared_ptr<Frame> &pCurr_frame, std::vector<cv::DMatch> good_matches, Eigen::Isometry3d relative_pose, std::vector<gtsam::Point3> &frame_keypoints_3d);
     void triangulate2(cv::Mat cameraMatrix, std::shared_ptr<Frame> &pPrev_frame, std::shared_ptr<Frame> &pCurr_frame, const std::vector<cv::DMatch> good_matches, const cv::Mat &mask, std::vector<Eigen::Vector3d> &frame_keypoints_3d);
     void triangulate3(cv::Mat camera_Matrix, std::shared_ptr<Frame> &pPrev_frame, std::shared_ptr<Frame> &pCurr_frame, const std::vector<cv::DMatch> good_matches, const cv::Mat &mask, std::vector<Eigen::Vector3d> &frame_keypoints_3d);
@@ -38,8 +41,9 @@ public:
     std::shared_ptr<Utils> pUtils_;
     Logger logger_;
     std::shared_ptr<Visualizer> pVisualizer_;
-    std::shared_ptr<Camera> camera_;
+    std::shared_ptr<Camera> pCamera_;
     LocalOptimizer optimizer_;
+    Tester tester_;
     cv::Ptr<cv::ORB> orb_;
     cv::Ptr<cv::DescriptorMatcher> orb_matcher_;
 

@@ -16,7 +16,8 @@ public:
     void drawReprojectedLandmarks(const std::vector<std::shared_ptr<Frame>> &frames);
     void drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
                                 const std::vector<cv::DMatch> &good_matches,
-                                const cv::Mat &mask,
+                                const cv::Mat &essential_mask,
+                                const cv::Mat &pose_mask,
                                 const std::vector<Eigen::Vector3d> &triangulated_kps);
     void drawGrid(cv::Mat &image);
     void drawKeypoints(std::shared_ptr<Frame> pFrame,
