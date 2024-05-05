@@ -45,7 +45,9 @@ public:
     LocalOptimizer optimizer_;
     Tester tester_;
     cv::Ptr<cv::ORB> orb_;
+    cv::Ptr<cv::SIFT> sift_;
     cv::Ptr<cv::DescriptorMatcher> orb_matcher_;
+    cv::Ptr<cv::DescriptorMatcher> sift_matcher_;
 
     // data containers
     std::vector<cv::Mat> keypoints_3d_vec_;

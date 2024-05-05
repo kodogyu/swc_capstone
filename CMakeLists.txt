@@ -5,15 +5,17 @@ set(CMAKE_CXX_FLAGS "-std=c++17")
 set(CMAKE_BUILD_TYPE Debug)
 
 ##=========================DEPENDENCIES=========================##
-find_package(Eigen3 REQUIRED)
+find_package(Eigen3 3.3 REQUIRED)   # -DEigen3_DIR=/usr/include/eigen3 (3.3.7), /usr/local/share/eigen3/cmake (3.4)
 find_package(GTSAM REQUIRED)    # -DGTSAM_DIR=/usr/local/lib/cmake/GTSAM
 find_package(OpenCV 4 REQUIRED)   # -DOpenCV_DIR=/home/kodogyu/opencv/build
 find_package(Sophus REQUIRED)
 find_package(Pangolin 0.8 REQUIRED)
 
-message(STATUS "opencv version: ${OpenCV_VERSION}")
-message(STATUS "gtsam path: ${GTSAM_DIR}")
+message(STATUS "eigen version: ${Eigen3_VERSION}")
+message(STATUS "eigen path: ${Eigen3_DIR}")
 message(STATUS "gtsam version: ${GTSAM_VERSION}")
+message(STATUS "gtsam path: ${GTSAM_DIR}")
+message(STATUS "opencv version: ${OpenCV_VERSION}")
 
 include_directories(
     ${EIGEN3_INCLUDE_DIRS}
@@ -31,6 +33,7 @@ add_executable(visual_odometry
     src/logger.cpp
     src/main.cpp
     src/optimizer.cpp
+    src/ransac.cpp
     src/tester.cpp
     src/utils.cpp
     src/visual_odometry.cpp

@@ -10,7 +10,7 @@ Frame::Frame() {
     relative_pose_ = Eigen::Isometry3d::Identity();
 }
 
-void Frame::setKeypoints(const std::vector<cv::KeyPoint> &keypoints, const cv::Mat &descriptors) {
+void Frame::setKeypointsAndDescriptors(const std::vector<cv::KeyPoint> &keypoints, const cv::Mat &descriptors) {
     // init keypoints_
     keypoints_ = keypoints;
 

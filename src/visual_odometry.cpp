@@ -11,7 +11,10 @@ VisualOdometry::VisualOdometry(std::string config_path) {
     pVisualizer_ = std::make_shared<Visualizer>(pConfig_, pUtils_);
 
     orb_ = cv::ORB::create(pConfig_->num_features_, 1.2, 8, 31, 0, 2, cv::ORB::HARRIS_SCORE, 31, 25);
-    orb_matcher_ = cv::DescriptorMatcher::create(cv::DescriptorMatcher::BRUTEFORCE);
+    orb_matcher_ = cv::DescriptorMatcher::create(cv::DescriptorMatcher::BRUTEFORCE_HAMMING);
+
+    sift_ = cv::SIFT::create();
+    sift_matcher_ = cv::DescriptorMatcher::create(cv::DescriptorMatcher::BRUTEFORCE);
 }
 
 void VisualOdometry::run() {
@@ -53,11 +56,13 @@ void VisualOdometry::run() {
         if (i == 1) {  // first run
             cv::Mat prev_image_descriptors;
             std::vector<cv::KeyPoint> prev_image_keypoints;
-            orb_->detectAndCompute(pPrev_frame->image_, cv::Mat(), prev_image_keypoints, prev_image_descriptors);
-            pPrev_frame->setKeypoints(prev_image_keypoints, prev_image_descriptors);
+            // orb_->detectAndCompute(pPrev_frame->image_, cv::Mat(), prev_image_keypoints, prev_image_descriptors);
+            sift_->detectAndCompute(pPrev_frame->image_, cv::Mat(), prev_image_keypoints, prev_image_descriptors);
+            pPrev_frame->setKeypointsAndDescriptors(prev_image_keypoints, prev_image_descriptors);
         }
-        orb_->detectAndCompute(pCurr_frame->image_, cv::Mat(), curr_image_keypoints, curr_image_descriptors);
-        pCurr_frame->setKeypoints(curr_image_keypoints, curr_image_descriptors);
+        // orb_->detectAndCompute(pCurr_frame->image_, cv::Mat(), curr_image_keypoints, curr_image_descriptors);
+        sift_->detectAndCompute(pCurr_frame->image_, cv::Mat(), curr_image_keypoints, curr_image_descriptors);
+        pCurr_frame->setKeypointsAndDescriptors(curr_image_keypoints, curr_image_descriptors);
 
         // filter keypoints
         if (pConfig_->filtering_mode_ == FilterMode::KEYPOINT_FILTERING) {
@@ -87,27 +92,29 @@ void VisualOdometry::run() {
         std::vector<std::vector<cv::DMatch>> image_matches01_vec;
         std::vector<std::vector<cv::DMatch>> image_matches10_vec;
         // double between_dist_thresh = 0.60;
-        orb_matcher_->knnMatch(pPrev_frame->descriptors_, pCurr_frame->descriptors_, image_matches01_vec, 2);  // prev -> curr matches
-        orb_matcher_->knnMatch(pCurr_frame->descriptors_, pPrev_frame->descriptors_, image_matches10_vec, 2);  // curr -> prev matches
+        // orb_matcher_->knnMatch(pPrev_frame->descriptors_, pCurr_frame->descriptors_, image_matches01_vec, 2);  // prev -> curr matches
+        // orb_matcher_->knnMatch(pCurr_frame->descriptors_, pPrev_frame->descriptors_, image_matches10_vec, 2);  // curr -> prev matches
+        sift_matcher_->knnMatch(pPrev_frame->descriptors_, pCurr_frame->descriptors_, image_matches01_vec, 2);  // prev -> curr matches
+        sift_matcher_->knnMatch(pCurr_frame->descriptors_, pPrev_frame->descriptors_, image_matches10_vec, 2);  // curr -> prev matches
 
         std::vector<cv::DMatch> good_matches;  // good matchings
         // Mark I
-        // for (int i = 0; i < image_matches01_vec.size(); i++) {
-        //     if (image_matches01_vec[i][0].distance < image_matches01_vec[i][1].distance * pConfig_->des_dist_thresh_) {  // prev -> curr match에서 좋은가?
-        //         good_matches.push_back(image_matches01_vec[i][0]);
-        //     }
-        // }
-
-        // Mark II
         for (int i = 0; i < image_matches01_vec.size(); i++) {
             if (image_matches01_vec[i][0].distance < image_matches01_vec[i][1].distance * pConfig_->des_dist_thresh_) {  // prev -> curr match에서 좋은가?
-                int image1_keypoint_idx = image_matches01_vec[i][0].trainIdx;
-                if (image_matches10_vec[image1_keypoint_idx][0].distance < image_matches10_vec[image1_keypoint_idx][1].distance * pConfig_->des_dist_thresh_) {  // curr -> prev match에서 좋은가?
-                    if (image_matches01_vec[i][0].queryIdx == image_matches10_vec[image1_keypoint_idx][0].trainIdx)
-                        good_matches.push_back(image_matches01_vec[i][0]);
-                }
+                good_matches.push_back(image_matches01_vec[i][0]);
             }
         }
+
+        // // Mark II
+        // for (int i = 0; i < image_matches01_vec.size(); i++) {
+        //     if (image_matches01_vec[i][0].distance < image_matches01_vec[i][1].distance * pConfig_->des_dist_thresh_) {  // prev -> curr match에서 좋은가?
+        //         int image1_keypoint_idx = image_matches01_vec[i][0].trainIdx;
+        //         if (image_matches10_vec[image1_keypoint_idx][0].distance < image_matches10_vec[image1_keypoint_idx][1].distance * pConfig_->des_dist_thresh_) {  // curr -> prev match에서 좋은가?
+        //             if (image_matches01_vec[i][0].queryIdx == image_matches10_vec[image1_keypoint_idx][0].trainIdx)
+        //                 good_matches.push_back(image_matches01_vec[i][0]);
+        //         }
+        //     }
+        // }
 
         // filter matches
         if (pConfig_->filtering_mode_ == FilterMode::MATCH_FILTERING) {
@@ -132,7 +139,7 @@ void VisualOdometry::run() {
         //         + std::to_string(pCurr_frame->frame_image_idx_)
         //         + "_kp_matches(raw).png", image_matches);
 
-        // RANSAC
+        // extract points from keypoints
         std::vector<cv::KeyPoint> image0_kps;
         std::vector<cv::KeyPoint> image1_kps;
         std::vector<cv::Point2f> image0_kp_pts;
@@ -144,8 +151,24 @@ void VisualOdometry::run() {
             image1_kps.push_back(pCurr_frame->keypoints_[match.trainIdx]);
         }
 
+        // essential matrix
+        cv::Mat essential_mat;
         cv::Mat essential_mask;
-        cv::Mat essential_mat = cv::findEssentialMat(image1_kp_pts, image0_kp_pts, pCamera_->intrinsic_, cv::RANSAC, 0.999, 1.0, essential_mask);
+
+        // TEST
+        if (pConfig_->test_mode_) {
+            std::cout << "\n[test mode] custom essential matrix finding" << std::endl;
+            Eigen::Matrix3d essential_mat_eigen = pUtils_->findEssentialMat(pCamera_->intrinsic_, image0_kp_pts, image1_kp_pts, essential_mask, 0.999, 0.05);
+            cv::eigen2cv(essential_mat_eigen, essential_mat);
+        }
+        else {
+            essential_mat = cv::findEssentialMat(image0_kp_pts, image1_kp_pts, pCamera_->intrinsic_, cv::RANSAC, 0.999, 1.0, 500, essential_mask);
+            // essential_mat = cv::findEssentialMat(image1_kp_pts, image0_kp_pts, pCamera_->intrinsic_, cv::RANSAC, 0.999, 1.0, 500, essential_mask);
+            // cv::Point2d pp(pCamera_->cx_, pCamera_->cy_);
+            // essential_mat = cv::findEssentialMat(image1_kp_pts, image0_kp_pts, pCamera_->fx_, pp, cv::RANSAC, 0.999, 1.0, 500, essential_mask);
+        }
+        std::cout << "essential matrix:\n" << essential_mat << std::endl;
+
         cv::Mat ransac_matches;
         cv::drawMatches(pPrev_frame->image_, pPrev_frame->keypoints_,
                         pCurr_frame->image_, pCurr_frame->keypoints_,
@@ -158,12 +181,7 @@ void VisualOdometry::run() {
                 + std::to_string(pCurr_frame->frame_image_idx_)
                 + "_kp_matches(ransac).png", ransac_matches);
 
-        int essential_inliers = 0;
-        for (int i = 0; i < essential_mask.rows; i++) {
-            if (essential_mask.at<unsigned char>(i) == 1) {
-                essential_inliers++;
-            }
-        }
+        int essential_inliers = pUtils_->countMask(essential_mask);
         std::cout << "essential inliers / matches: " << essential_inliers << " / " << good_matches.size() << std::endl;
 
         // end timer [feature matching]
@@ -177,28 +195,40 @@ void VisualOdometry::run() {
         // start timer [motion estimation]
         std::chrono::time_point<std::chrono::steady_clock> motion_estimation_start = std::chrono::steady_clock::now();
 
-        cv::Mat pose_mask = essential_mask.clone();
         Eigen::Isometry3d relative_pose;
-        cv::Mat R, t;
-        cv::recoverPose(essential_mat, image1_kp_pts, image0_kp_pts, pCamera_->intrinsic_, R, t, pose_mask);
+        cv::Mat pose_mask = essential_mask.clone();
 
         // TEST
         if (pConfig_->test_mode_) {
-            tester_.decomposeEssentialMat(essential_mat, pCurr_frame->pCamera_->intrinsic_, image0_kp_pts, image1_kp_pts, essential_mask, R, t);
+            std::cout << "\n[test mode] custom recover pose" << std::endl;
+            pUtils_->recoverPose(pCamera_->intrinsic_, essential_mat, image0_kp_pts, image1_kp_pts, relative_pose, pose_mask);
         }
+        else {
+            cv::Mat R, t;
+            cv::recoverPose(essential_mat, image0_kp_pts, image1_kp_pts, pCamera_->intrinsic_, R, t, pose_mask);
+            // cv::recoverPose(essential_mat, image1_kp_pts, image0_kp_pts, pCamera_->intrinsic_, R, t, pose_mask);
 
-        Eigen::Matrix3d rotation_mat;
-        Eigen::Vector3d translation_mat;
-        cv::cv2eigen(R, rotation_mat);
-        cv::cv2eigen(t, translation_mat);
-        gtsam::Rot3 rotation = gtsam::Rot3(rotation_mat);
-        gtsam::Point3 translation = gtsam::Point3(translation_mat);
-        relative_pose.linear() = rotation_mat;
-        relative_pose.translation() = translation_mat;
+            Eigen::Matrix3d rotation_mat;
+            Eigen::Vector3d translation_mat;
+
+            cv::cv2eigen(R, rotation_mat);
+            cv::cv2eigen(t, translation_mat);
+
+            // 필요 없나?
+            // gtsam::Rot3 rotation = gtsam::Rot3(rotation_mat);
+            // gtsam::Point3 translation = gtsam::Point3(translation_mat);
+
+            relative_pose.linear() = rotation_mat;
+            relative_pose.translation() = translation_mat;
+
+        }
+        std::cout << "relative pose:\n" << relative_pose.matrix() << std::endl;
+
         pCurr_frame->relative_pose_ = relative_pose;
         pCurr_frame->pose_ = pPrev_frame->pose_ * relative_pose;
         poses_.push_back(poses_[i - 1] * relative_pose);
         relative_poses_.push_back(relative_pose);
+
 
         // end timer [motion estimation]
         std::chrono::time_point<std::chrono::steady_clock> motion_estimation_end = std::chrono::steady_clock::now();
@@ -214,8 +244,8 @@ void VisualOdometry::run() {
         std::vector<Eigen::Vector3d> keypoints_3d;
         // triangulate(camera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, relative_pose, keypoints_3d);
         // triangulate2(pCamera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, pose_mask, keypoints_3d);
-        triangulate3(pCamera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, pose_mask, keypoints_3d);
-        pPrev_frame->keypoints_3d_ = keypoints_3d;
+        // triangulate3(pCamera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, pose_mask, keypoints_3d);
+        // pPrev_frame->keypoints_3d_ = keypoints_3d;
 
         // end timer [triangulation]
         std::chrono::time_point<std::chrono::steady_clock> triangulation_end = std::chrono::steady_clock::now();
@@ -225,8 +255,10 @@ void VisualOdometry::run() {
         triangulation_costs_.push_back(triangulation_cost);
 
         std::vector<Eigen::Vector3d> triangulated_kps;
-        triangulateKeyPoints(pCurr_frame, image0_kp_pts, image1_kp_pts, triangulated_kps);
-        pUtils_->drawReprojectedLandmarks(pCurr_frame, good_matches, essential_mask,  pose_mask, triangulated_kps);
+        // triangulateKeyPoints(pCurr_frame, image0_kp_pts, image1_kp_pts, triangulated_kps);
+        pUtils_->cv_triangulatePoints(pPrev_frame, image0_kp_pts, pCurr_frame, image1_kp_pts, good_matches, triangulated_kps);
+        pUtils_->drawCvReprojectedLandmarks(pPrev_frame, image0_kp_pts, pCurr_frame, image1_kp_pts, triangulated_kps);
+        // pUtils_->drawReprojectedLandmarks(pCurr_frame, good_matches, essential_mask,  pose_mask, triangulated_kps);
         if (pConfig_->calc_reprojection_error_) {
             double reprojection_error = pUtils_->calcReprojectionError(pCurr_frame, good_matches, pose_mask, triangulated_kps);
             std::cout << "reprojection error: " << reprojection_error << std::endl;
@@ -250,12 +282,12 @@ void VisualOdometry::run() {
         auto scaling_cost = std::chrono::duration_cast<std::chrono::microseconds>(scaling_diff).count();
         scaling_costs_.push_back(scaling_cost);
 
-        cv::Mat keypoints_3d_mat = cv::Mat(3, pPrev_frame->keypoints_3d_.size(), CV_64F);
-        for (int i = 0; i < keypoints_3d.size(); i++) {
-            keypoints_3d_mat.at<double>(0, i) = pPrev_frame->keypoints_3d_[i].x();
-            keypoints_3d_mat.at<double>(1, i) = pPrev_frame->keypoints_3d_[i].y();
-            keypoints_3d_mat.at<double>(2, i) = pPrev_frame->keypoints_3d_[i].z();
-        }
+        // cv::Mat keypoints_3d_mat = cv::Mat(3, pPrev_frame->keypoints_3d_.size(), CV_64F);
+        // for (int i = 0; i < keypoints_3d.size(); i++) {
+        //     keypoints_3d_mat.at<double>(0, i) = pPrev_frame->keypoints_3d_[i].x();
+        //     keypoints_3d_mat.at<double>(1, i) = pPrev_frame->keypoints_3d_[i].y();
+        //     keypoints_3d_mat.at<double>(2, i) = pPrev_frame->keypoints_3d_[i].z();
+        // }
         // keypoints_3d_vec_.push_back(keypoints_3d_mat);
 
         //**========== 6. Local optimization ==========**//
@@ -310,7 +342,7 @@ void VisualOdometry::run() {
         //                     total_time_cost);
     }
     // keypoints_3d_vec_.push_back(cv::Mat::zeros(3, 1, CV_64F));
-    pUtils_->drawReprojectedLandmarks(frames_);
+    // pUtils_->drawReprojectedLandmarks(frames_);
     // pUtils_->drawFramesLandmarks(frames_);
     // pUtils_->drawCorrespondingFeatures(frames_, 3, 2);
     std::cout << "total Landmarks: " << Landmark().total_landmark_cnt_ << std::endl;

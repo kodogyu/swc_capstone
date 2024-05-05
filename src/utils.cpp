@@ -131,6 +131,89 @@ void Utils::drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
     cv::imwrite("output_logs/inter_frames/reprojected_landmarks/frame" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + "frame" + std::to_string(pFrame->frame_image_idx_) + "_proj.png", result_image);
 }
 
+void Utils::drawCvReprojectedLandmarks(const std::shared_ptr<Frame> &pPrev_frame,
+                                    const std::vector<cv::Point2f> &image0_kp_pts,
+                                    const std::shared_ptr<Frame> &pCurr_frame,
+                                    const std::vector<cv::Point2f> &image1_kp_pts,
+                                    const std::vector<Eigen::Vector3d> &triangulated_kps) {
+    // reproject points
+    cv::Mat prev_rvec, prev_tvec, curr_rvec, curr_tvec;
+    Eigen::Matrix3d rvec_temp;
+    Eigen::Vector3d tvec_temp;
+    rvec_temp = pPrev_frame->pose_.rotation();
+    tvec_temp = pPrev_frame->pose_.translation();
+    cv::eigen2cv(rvec_temp, prev_rvec);
+    cv::eigen2cv(tvec_temp, prev_tvec);
+
+    rvec_temp = pCurr_frame->pose_.rotation();
+    tvec_temp = pCurr_frame->pose_.translation();
+    cv::eigen2cv(rvec_temp, curr_rvec);
+    cv::eigen2cv(tvec_temp, curr_tvec);
+
+    std::vector<cv::Point3f> triangulated_kps_cv;
+    for (auto kp : triangulated_kps) {
+        cv::Point3f kp_cv(kp.x(), kp.y(), kp.z());
+        triangulated_kps_cv.push_back(kp_cv);
+    }
+
+    std::vector<cv::Point2f> prev_projected_pts, curr_projected_pts;
+    cv::projectPoints(triangulated_kps_cv, prev_rvec, prev_tvec, pPrev_frame->pCamera_->intrinsic_, cv::Mat(), prev_projected_pts);
+    cv::projectPoints(triangulated_kps_cv, curr_rvec, curr_tvec, pCurr_frame->pCamera_->intrinsic_, cv::Mat(), curr_projected_pts);
+
+    // draw reprojected points
+    cv::Mat curr_frame_img, prev_frame_img;
+    cv::cvtColor(pPrev_frame->image_, prev_frame_img, cv::COLOR_GRAY2BGR);
+    cv::cvtColor(pCurr_frame->image_, curr_frame_img, cv::COLOR_GRAY2BGR);
+
+    for (int i = 0; i < triangulated_kps.size(); i++) {
+        cv::Point2f measurement_point0 = image0_kp_pts[i];
+        cv::Point2f measurement_point1 = image1_kp_pts[i];
+
+        // draw original keypoint (prev_frame)
+        cv::rectangle(prev_frame_img,
+                    measurement_point0 - cv::Point2f(5, 5),
+                    measurement_point0 + cv::Point2f(5, 5),
+                    cv::Scalar(0, 255, 0));  // green, (yellow)
+
+        // draw reprojected keypoint (prev_frame)
+        cv::circle(prev_frame_img,
+                    prev_projected_pts[i],
+                    2,
+                    cv::Scalar(0, 0, 255));  // red, (blue)
+
+        // draw original-reprojected line (prev_frame)
+        cv::line(prev_frame_img,
+                    measurement_point0,
+                    prev_projected_pts[i],
+                    cv::Scalar(0, 0, 255));  // red, (blue)
+
+        // draw original keypoint (curr_frame)
+        cv::rectangle(curr_frame_img,
+                    measurement_point1 - cv::Point2f(5, 5),
+                    measurement_point1 + cv::Point2f(5, 5),
+                    cv::Scalar(0, 255, 0));  // green, (yellow)
+
+        // draw reprojected keypoint (curr_frame)
+        cv::circle(curr_frame_img,
+                    curr_projected_pts[i],
+                    2,
+                    cv::Scalar(0, 0, 255));  // red, (blue)
+
+        // draw original-reprojected line (curr_frame)
+        cv::line(curr_frame_img,
+                    measurement_point1,
+                    curr_projected_pts[i],
+                    cv::Scalar(0, 0, 255));  // red, (blue)
+    }
+    cv::Mat result_image;
+    cv::vconcat(prev_frame_img, curr_frame_img, result_image);
+
+    cv::putText(result_image, "frame" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + std::to_string(pCurr_frame->frame_image_idx_),
+                                cv::Point(0, 20), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
+
+    cv::imwrite("output_logs/inter_frames/reprojected_landmarks/frame" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + "frame" + std::to_string(pCurr_frame->frame_image_idx_) + "_proj.png", result_image);
+}
+
 void Utils::drawKeypoints(std::shared_ptr<Frame> pFrame,
                         std::string folder,
                         std::string tail) {
@@ -510,7 +593,8 @@ void Utils::drawCorrespondingFeatures(const std::vector<std::shared_ptr<Frame>> 
                 Eigen::Isometry3d c_T_w = w_T_c.inverse();
 
                 cv::Mat rotation, translation;
-                cv::eigen2cv(c_T_w.rotation(), rotation);
+                Eigen::Matrix3d c_T_w_rot = c_T_w.rotation();
+                cv::eigen2cv(c_T_w_rot, rotation);
                 cv::eigen2cv(Eigen::Vector3d(c_T_w.translation()), translation);
 
                 // landmark 3d point
@@ -650,5 +734,373 @@ void Utils::filterMatches(std::shared_ptr<Frame> &pFrame, std::vector<cv::DMatch
 
     matches = filtered_matches;
 }
+
+Eigen::Matrix3d Utils::findFundamentalMat(const std::vector<cv::Point2f> &image0_kp_pts, const std::vector<cv::Point2f> &image1_kp_pts) {
+    // Normalized Eight-point algorithm
+
+    // matrix W
+    int num_keypoints = image0_kp_pts.size();
+    Eigen::MatrixXd W = Eigen::MatrixXd::Zero(num_keypoints, 9);
+    // std::cout << "Matrix W:\n" << W.matrix() << std::endl;
+
+    // concat points
+    Eigen::MatrixXd P(3, num_keypoints), P_prime(3, num_keypoints);
+    for (int i = 0; i < num_keypoints; i++) {
+        Eigen::Vector3d p(image0_kp_pts[i].x, image0_kp_pts[i].y, 1);
+        Eigen::Vector3d p_prime(image1_kp_pts[i].x, image1_kp_pts[i].y, 1);
+
+        P.block<3, 1>(0, i) = p;
+        P_prime.block<3, 1>(0, i) = p_prime;
+    }
+
+    // mean, SSE
+    Eigen::Vector3d P_mean = P.rowwise().mean();
+    Eigen::Vector3d P_prime_mean = P_prime.rowwise().mean();
+    // std::cout << "P_mean: \n" << P_mean << std::endl;
+    // std::cout << "P_prime_mean: \n" << P_prime_mean << std::endl;
+
+    Eigen::Vector3d P_sse = Eigen::Vector3d::Zero();
+    Eigen::Vector3d P_prime_sse = Eigen::Vector3d::Zero();
+    for (int i = 0; i < num_keypoints; i++) {
+        Eigen::Vector3d P_e = P.col(i) - P_mean;
+        Eigen::Vector3d P_prime_e = P_prime.col(i) - P_prime_mean;
+
+        P_sse += (P_e.array() * P_e.array()).matrix();
+        P_prime_sse += (P_prime_e.array() * P_prime_e.array()).matrix();
+    }
+    // std::cout << "P_sse: \n" << P_sse << std::endl;
+    // std::cout << "P_prime_sse: \n" << P_prime_sse << std::endl;
+
+    // scale
+    Eigen::Vector3d P_scale = Eigen::sqrt(2*num_keypoints / P_sse.array());
+    Eigen::Vector3d P_prime_scale = Eigen::sqrt(2*num_keypoints / P_prime_sse.array());
+    // std::cout << "P_scale: \n" << P_scale << std::endl;
+    // std::cout << "P_prime_scale: \n" << P_prime_scale << std::endl;
+
+    // transform
+    Eigen::Matrix3d P_transform;
+    Eigen::Matrix3d P_prime_transform;
+    P_transform << P_scale(0), 0, P_scale(0) * -P_mean(0),
+                    0, P_scale(1), P_scale(1) * -P_mean(1),
+                    0, 0, 1;
+    P_prime_transform << P_prime_scale(0), 0, P_prime_scale(0) * -P_prime_mean(0),
+                    0, P_prime_scale(1), P_prime_scale(1) * -P_prime_mean(1),
+                    0, 0, 1;
+    // std::cout << "P_transform: \n" << P_transform.matrix() << std::endl;
+    // std::cout << "P_prime_transform: \n" << P_prime_transform.matrix() << std::endl;
+
+    // Normalize keypoints
+    for (int i = 0; i < num_keypoints; i++) {
+        Eigen::Vector3d p = P_transform * P.col(i);
+        Eigen::Vector3d p_prime = P_prime_transform * P_prime.col(i);
+
+        Eigen::Matrix3d p_p_prime = p * p_prime.transpose();
+        Eigen::Map<Eigen::RowVectorXd> p_p_prime_vec(p_p_prime.data(), p_p_prime.size());
+        // std::cout << "pq[" << i << "] : " << p_p_prime_vec << std::endl;
+
+        W.block<1, 9>(i, 0) = p_p_prime_vec;
+    }
+    // std::cout << "Matrix W:\n" << W.matrix() << std::endl;
+
+    // SVD
+    Eigen::JacobiSVD<Eigen::MatrixXd> svd(W, Eigen::ComputeFullU | Eigen::ComputeFullV);
+    Eigen::Matrix<double, 9, 1> fundamental_vec = svd.matrixV().col(8);
+
+    // rank 2
+    // std::cout << "fundamental_vec: \n" << fundamental_vec.matrix() << std::endl;
+    Eigen::Map<Eigen::MatrixXd> fundamental_mat_temp(fundamental_vec.data(), 3, 3);
+
+    Eigen::JacobiSVD<Eigen::MatrixXd> f_svd(fundamental_mat_temp, Eigen::ComputeFullU | Eigen::ComputeFullV);
+    Eigen::MatrixXd fundamental_U = f_svd.matrixU();
+    Eigen::MatrixXd fundamental_S = f_svd.singularValues().asDiagonal();
+    Eigen::MatrixXd fundamental_V = f_svd.matrixV();
+
+    // std::cout << "fundamental_S: \n" << fundamental_S.matrix() << std::endl;
+    fundamental_S(2, 2) = 0;
+    // std::cout << "fundamental_S: \n" << fundamental_S.matrix() << std::endl;
+
+    // Fundamental Matrix
+    Eigen::Matrix3d fundamental_mat = fundamental_U * fundamental_S * fundamental_V.transpose();
+    // std::cout << "Fundamental Matrix: \n" << fundamental_mat.matrix() << std::endl;
+
+    // Re-transform
+    fundamental_mat = P_transform.transpose() * fundamental_mat * P_prime_transform;
+    fundamental_mat = fundamental_mat.array() / fundamental_mat(2, 2);
+    // std::cout << "Fundamental Matrix: \n" << fundamental_mat.matrix() << std::endl;
+
+    return fundamental_mat;
+}
+
+Eigen::Matrix3d Utils::findFundamentalMat(const std::vector<cv::Point2f> &image0_kp_pts, const std::vector<cv::Point2f> &image1_kp_pts,
+                                            cv::Mat &mask, double inlier_prob, double ransac_threshold) {
+    int sample_size = 9;
+    Ransac ransac(sample_size, inlier_prob, ransac_threshold, image0_kp_pts, image1_kp_pts);
+
+    ransac.run();
+
+    mask = cv::Mat::zeros(image0_kp_pts.size(), 1, CV_8UC1);
+    for (int i = 0; i < ransac.best_inlier_idxes_.size(); i++) {
+        int idx = ransac.best_inlier_idxes_[i];
+        mask.at<unsigned char>(idx) = 1;
+    }
+
+    return ransac.best_model_;
+}
+
+Eigen::Matrix3d Utils::findEssentialMat(const cv::Mat &intrinsic, const std::vector<cv::Point2f> &image0_kp_pts, const std::vector<cv::Point2f> &image1_kp_pts) {
+    Eigen::Matrix3d fundamental_mat = findFundamentalMat(image0_kp_pts, image1_kp_pts);
+
+    cv::Mat fundamental_mat_cv;
+    cv::eigen2cv(fundamental_mat, fundamental_mat_cv);
+
+    cv::Mat essential_mat_cv = intrinsic.t() * fundamental_mat_cv * intrinsic;
+    // std::cout << "essential matrix:\n" << essential_mat_cv << std::endl;
+
+    // SVD
+    Eigen::Matrix3d essential_mat;
+    cv::cv2eigen(essential_mat_cv, essential_mat);
+
+    Eigen::JacobiSVD<Eigen::Matrix3d> e_svd(essential_mat, Eigen::ComputeFullU | Eigen::ComputeFullV);
+    Eigen::Matrix3d essential_U = e_svd.matrixU();
+    Eigen::Matrix3d essential_S = Eigen::Vector3d(1, 1, 0).asDiagonal();
+    Eigen::Matrix3d essential_V = e_svd.matrixV();
+    essential_mat = essential_U * essential_S * essential_V.transpose();
+    std::cout << "essential matrix:\n" << essential_mat << std::endl;
+
+    return essential_mat;
+}
+
+Eigen::Matrix3d Utils::findEssentialMat(const cv::Mat &intrinsic, const std::vector<cv::Point2f> &image0_kp_pts, const std::vector<cv::Point2f> &image1_kp_pts,
+                                        cv::Mat &mask, double inlier_prob, double ransac_threshold) {
+    Eigen::Matrix3d fundamental_mat = findFundamentalMat(image0_kp_pts, image1_kp_pts, mask, inlier_prob, ransac_threshold);
+
+    cv::Mat fundamental_mat_cv;
+    cv::eigen2cv(fundamental_mat, fundamental_mat_cv);
+
+    cv::Mat essential_mat_cv = intrinsic.t() * fundamental_mat_cv * intrinsic;
+    // std::cout << "essential matrix:\n" << essential_mat_cv << std::endl;
+
+    // SVD
+    Eigen::Matrix3d essential_mat;
+    cv::cv2eigen(essential_mat_cv, essential_mat);
+
+    Eigen::JacobiSVD<Eigen::Matrix3d> e_svd(essential_mat, Eigen::ComputeFullU | Eigen::ComputeFullV);
+    Eigen::Matrix3d essential_U = e_svd.matrixU();
+    Eigen::Matrix3d essential_S = Eigen::Vector3d(1, 1, 0).asDiagonal();
+    Eigen::Matrix3d essential_V = e_svd.matrixV();
+    essential_mat = essential_U * essential_S * essential_V.transpose();
+    std::cout << "essential matrix:\n" << essential_mat << std::endl;
+
+    Eigen::Vector3d essential_singular_values = e_svd.singularValues();
+
+    return essential_mat;
+}
+
+void Utils::decomposeEssentialMat(const cv::Mat &essential_mat, cv::Mat &R1, cv::Mat &R2, cv::Mat &t) {
+    cv::Mat U, S, VT;
+    cv::SVD::compute(essential_mat, S, U, VT);
+
+    // // OpenCV decomposeEssentialMat()
+    // cv::Mat W = (cv::Mat_<double>(3, 3) << 0, 1, 0,
+    //                                         -1, 0, 0,
+    //                                         0, 0, 1);
+
+    // hand function.
+    cv::Mat W = (cv::Mat_<double>(3, 3) << 0, -1, 0,
+                                            1, 0, 0,
+                                            0, 0, 1);
+
+
+    // double det_U = cv::determinant(U);
+    // double det_W = cv::determinant(W);
+    // double det_VT = cv::determinant(VT);
+    // std::cout << "det U: " << det_U << std::endl;
+    // std::cout << "det W: " << det_W << std::endl;
+    // std::cout << "det VT: " << det_VT << std::endl;
+
+    R1 = U * W * VT;
+    R2 = U * W.t() * VT;
+    t = U.col(2);
+
+    double det_R1 = cv::determinant(R1);
+    double det_R2 = cv::determinant(R2);
+    // std::cout << "det R1: " << det_R1 << std::endl;
+    // std::cout << "det R2: " << det_R2 << std::endl;
+
+    if (det_R1 < 0) {
+        R1 = -R1;
+    }
+    if (det_R1 < 0) {
+        R2 = -R2;
+    }
+    // std::cout << "R1:\n" << R1 << std::endl;
+    // std::cout << "R2:\n" << R2 << std::endl;
+    // std::cout << "t:\n" << t << std::endl;
+
+    // std::vector<cv::Mat> pose_candidates(4);
+    // cv::hconcat(std::vector<cv::Mat>{R1, t}, pose_candidates[0]);
+    // cv::hconcat(std::vector<cv::Mat>{R1, -t}, pose_candidates[1]);
+    // cv::hconcat(std::vector<cv::Mat>{R2, t}, pose_candidates[2]);
+    // cv::hconcat(std::vector<cv::Mat>{R2, -t}, pose_candidates[3]);
+
+    // for (int i = 0; i < pose_candidates.size(); i++) {
+    //     std::cout << "pose_candidate [" << i << "]: \n" << pose_candidates[i] << std::endl;
+    // }
+}
+
+int Utils::chiralityCheck(const cv::Mat &intrinsic,
+                    const std::vector<cv::Point2f> &image0_kp_pts,
+                    const std::vector<cv::Point2f> &image1_kp_pts,
+                    const Eigen::Isometry3d &cam1_pose,
+                    cv::Mat &mask) {
+    Eigen::Matrix3d intrinsic_eigen;
+    cv::cv2eigen(intrinsic, intrinsic_eigen);
+    Eigen::MatrixXd prev_proj = Eigen::MatrixXd::Identity(3, 4);
+    Eigen::MatrixXd curr_proj = Eigen::MatrixXd::Identity(3, 4);
+
+    prev_proj = intrinsic_eigen * prev_proj;
+    curr_proj = intrinsic_eigen * curr_proj * cam1_pose.inverse().matrix();
+
+    int positive_cnt = 0;
+
+    for (int i = 0; i < image0_kp_pts.size(); i++) {
+        if (mask.at<unsigned char>(i) != 1) {
+            continue;
+        }
+
+        Eigen::Matrix4d A;
+        A.row(0) = image0_kp_pts[i].x * prev_proj.row(2) - prev_proj.row(0);
+        A.row(1) = image0_kp_pts[i].y * prev_proj.row(2) - prev_proj.row(1);
+        A.row(2) = image1_kp_pts[i].x * curr_proj.row(2) - curr_proj.row(0);
+        A.row(3) = image1_kp_pts[i].y * curr_proj.row(2) - curr_proj.row(1);
+
+        Eigen::JacobiSVD<Eigen::Matrix4d> svd(A, Eigen::ComputeFullU | Eigen::ComputeFullV);
+        Eigen::Vector4d point_3d_homo = svd.matrixV().col(3);
+        Eigen::Vector3d point_3d = point_3d_homo.head(3) / point_3d_homo[3];
+        // landmarks.push_back(point_3d);
+
+        Eigen::Vector4d cam1_point_3d_homo = cam1_pose.inverse() * point_3d_homo;
+        Eigen::Vector3d cam1_point_3d = cam1_point_3d_homo.head(3) / cam1_point_3d_homo[3];
+        // std::cout << "landmark(world) z: " << point_3d.z() << ", (camera) z: " << cam1_point_3d.z() << std::endl;
+        if (point_3d.z() > 0 && cam1_point_3d.z() > 0 && point_3d.z() < 70) {
+            mask.at<unsigned char>(i) = 1;
+            positive_cnt++;
+        }
+        else {
+            mask.at<unsigned char>(i) = 0;
+        }
+    }
+
+    return positive_cnt;
+}
+
+void Utils::recoverPose(const cv::Mat &intrinsic,
+                        const cv::Mat &essential_mat,
+                        const std::vector<cv::Point2f> &image0_kp_pts,
+                        const std::vector<cv::Point2f> &image1_kp_pts,
+                        Eigen::Isometry3d &relative_pose,
+                        cv::Mat &mask) {
+
+    // Decompose essential matrix
+    cv::Mat R1, R2, t;
+    // cv::decomposeEssentialMat(essential_mat, R1, R2, t);
+    // std::cout << "cv_R1:\n" << R1 << std::endl;
+    // std::cout << "cv_R2:\n" << R2 << std::endl;
+    // std::cout << "cv_t:\n" << t << std::endl;
+    decomposeEssentialMat(essential_mat, R1, R2, t);
+
+    Eigen::Matrix3d rotation_mat;
+    Eigen::Vector3d translation_mat;
+
+    std::vector<Eigen::Isometry3d> rel_pose_candidates(4, Eigen::Isometry3d::Identity());
+    std::vector<cv::Mat> masks(4, mask.clone());
+    int valid_point_cnts[4];
+    for (int k = 0; k < 4; k++) {
+        if (k == 0) {
+            cv::cv2eigen(R1, rotation_mat);
+            cv::cv2eigen(t, translation_mat);
+        }
+        else if (k == 1) {
+            cv::cv2eigen(R1, rotation_mat);
+            cv::cv2eigen(-t, translation_mat);
+        }
+        else if (k == 2) {
+            cv::cv2eigen(R2, rotation_mat);
+            cv::cv2eigen(t, translation_mat);
+        }
+        else if (k == 3) {
+            cv::cv2eigen(R2, rotation_mat);
+            cv::cv2eigen(-t, translation_mat);
+        }
+        // rotation_mat << 0.999992,  0.00248744,  0.00303404,
+        //                 -0.00249412,    0.999994,  0.00219979,
+        //                 -0.00302855, -0.00220734,    0.999993;
+        // translation_mat << 0.00325004, 0.00744242, -0.999967;
+
+        rel_pose_candidates[k].linear() = rotation_mat;
+        rel_pose_candidates[k].translation() = translation_mat;
+        // rel_pose_candidates[k].linear() = rotation_mat.transpose();
+        // rel_pose_candidates[k].translation() = - rotation_mat.transpose() * translation_mat;
+
+        std::cout << "pose candidate[" << k << "]:\n" << rel_pose_candidates[k].matrix() << std::endl;
+
+        valid_point_cnts[k] = chiralityCheck(intrinsic, image0_kp_pts, image1_kp_pts, rel_pose_candidates[k], masks[k]);
+    }
+
+    int max_cnt = 0, max_idx = 0;
+    for (int k = 0; k < 4; k++) {
+        std::cout << "cnt[" << k << "]: " << valid_point_cnts[k] << std::endl;
+        if (valid_point_cnts[k] > max_cnt) {
+            max_cnt = valid_point_cnts[k];
+            max_idx = k;
+        }
+    }
+    // std::cout << "max idx: " << max_idx << std::endl;
+    relative_pose = rel_pose_candidates[max_idx];
+    mask = masks[max_idx];
+    std::cout << "mask count: " << countMask(mask) << std::endl;
+    // std::cout << "relative pose:\n " << relative_pose.matrix() << std::endl;
+}
+
+
+int Utils::countMask(const cv::Mat &mask) {
+    int count = 0;
+    for (int i = 0; i < mask.rows; i++) {
+        if (mask.at<unsigned char>(i) == 1) {
+            count++;
+        }
+    }
+    return count;
+}
+
+void Utils::cv_triangulatePoints(const std::shared_ptr<Frame>& pPrev_frame, const std::vector<cv::Point2f> &prev_kp_pts,
+                                const std::shared_ptr<Frame>& pCurr_frame, const std::vector<cv::Point2f> &curr_kp_pts,
+                                const std::vector<cv::DMatch> &good_matches, std::vector<Eigen::Vector3d> &keypoints_3d) {
+    cv::Mat points4D;
+    cv::Mat prev_proj_mat, curr_proj_mat;
+    cv::Mat prev_pose, curr_pose;
+    Eigen::MatrixXd pose_temp;
+    pose_temp = pPrev_frame->pose_.matrix().block<3, 4>(0, 0);
+    cv::eigen2cv(pose_temp, prev_pose);
+    pose_temp = pCurr_frame->pose_.matrix().block<3, 4>(0, 0);
+    cv::eigen2cv(pose_temp, curr_pose);
+    prev_proj_mat = pPrev_frame->pCamera_->intrinsic_ * prev_pose;
+    curr_proj_mat = pCurr_frame->pCamera_->intrinsic_ * curr_pose;
+
+    // triangulate
+    cv::triangulatePoints(prev_proj_mat, curr_proj_mat, prev_kp_pts, curr_kp_pts, points4D);
+
+    // homogeneous -> 3D
+    for (int i = 0; i < points4D.cols; i++) {
+        cv::Mat point_homo = points4D.col(i);
+        Eigen::Vector3d point_3d(point_homo.at<float>(0) / point_homo.at<float>(3),
+                                point_homo.at<float>(1) / point_homo.at<float>(3),
+                                point_homo.at<float>(2) / point_homo.at<float>(3));
+
+        keypoints_3d.push_back(point_3d);
+    }
+
+}
+
 
 

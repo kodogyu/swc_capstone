@@ -6,6 +6,7 @@
 #include "common_includes.hpp"
 #include "frame.hpp"
 #include "config.hpp"
+#include "ransac.hpp"
 
 class Utils {
 public:
@@ -19,6 +20,11 @@ public:
                                 const cv::Mat &essential_mask,
                                 const cv::Mat &pose_mask,
                                 const std::vector<Eigen::Vector3d> &triangulated_kps);
+    void drawCvReprojectedLandmarks(const std::shared_ptr<Frame> &pPrev_frame,
+                                    const std::vector<cv::Point2f> &image0_kp_pts,
+                                    const std::shared_ptr<Frame> &pCurr_frame,
+                                    const std::vector<cv::Point2f> &image1_kp_pts,
+                                    const std::vector<Eigen::Vector3d> &triangulated_kps);
     void drawGrid(cv::Mat &image);
     void drawKeypoints(std::shared_ptr<Frame> pFrame,
                     std::string folder,
@@ -49,5 +55,32 @@ public:
     void filterKeypoints(std::shared_ptr<Frame> &pFrame);
     void filterMatches(std::shared_ptr<Frame> &pFrame, std::vector<cv::DMatch> &matches);
 
+    static Eigen::Matrix3d findFundamentalMat(const std::vector<cv::Point2f> &image0_kp_pts, const std::vector<cv::Point2f> &image1_kp_pts);
+    static Eigen::Matrix3d findFundamentalMat(const std::vector<cv::Point2f> &image0_kp_pts, const std::vector<cv::Point2f> &image1_kp_pts,
+                                        cv::Mat &mask, double inlier_prob, double ransac_threshold);
+    static Eigen::Matrix3d findEssentialMat(const cv::Mat &intrinsic, const std::vector<cv::Point2f> &image0_kp_pts, const std::vector<cv::Point2f> &image1_kp_pts);
+    static Eigen::Matrix3d findEssentialMat(const cv::Mat &intrinsic, const std::vector<cv::Point2f> &image0_kp_pts, const std::vector<cv::Point2f> &image1_kp_pts,
+                                        cv::Mat &mask, double inlier_prob, double ransac_threshold);
+
+    void recoverPose(const cv::Mat &intrinsic,
+                        const cv::Mat &essential_mat,
+                        const std::vector<cv::Point2f> &image0_kp_pts,
+                        const std::vector<cv::Point2f> &image1_kp_pts,
+                        Eigen::Isometry3d &relative_pose,
+                        cv::Mat &mask);
+    int chiralityCheck(const cv::Mat &intrinsic,
+                    const std::vector<cv::Point2f> &image0_kp_pts,
+                    const std::vector<cv::Point2f> &image1_kp_pts,
+                    const Eigen::Isometry3d &cam1_pose,
+                    cv::Mat &mask);
+    void decomposeEssentialMat(const cv::Mat &essential_mat, cv::Mat &R1, cv::Mat &R2, cv::Mat &t);
+
+    int countMask(const cv::Mat &mask);
+
+    void cv_triangulatePoints(const std::shared_ptr<Frame>& pPrev_frame, const std::vector<cv::Point2f> &prev_kp_pts,
+                                const std::shared_ptr<Frame>& pCurr_frame, const std::vector<cv::Point2f> &curr_kp_pts,
+                                const std::vector<cv::DMatch> &good_matches, std::vector<Eigen::Vector3d> &keypoints_3d);
+
+public:
     std::shared_ptr<Configuration> pConfig_;
 };

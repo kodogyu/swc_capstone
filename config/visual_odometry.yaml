@@ -4,7 +4,7 @@
 # num_frames:
 #   -1: all frames
 #    n: n frames
-num_frames: 100
+num_frames: 2
 frame_offset: 0
 
 # # KITTI-360
@@ -26,6 +26,7 @@ is_kitti: 1
 gt_path: /home/kodogyu/Datasets/KITTI/dataset/poses/00.txt
 
 left_images_dir: /home/kodogyu/Datasets/KITTI/dataset/sequences/00/image_0
+# left_images_dir: /home/kodogyu/github_repos/sfm/data/nutellar2/
 
 #========== Camera parameters ==========#
 
@@ -74,6 +75,14 @@ s: 0.0
 cx: 607.1928
 cy: 185.2157
 
+# # nutella
+# is_fisheye: 0
+# fx: 3092.8
+# fy: 3092.8
+# s: 0.0
+# cx: 2016
+# cy: 1512
+
 #========== Visualize ==========#
 display_gt: 1
 # display_type:
@@ -81,7 +90,7 @@ display_gt: 1
 #   1: pose & landmarks
 #   2: pose only (aligned with gt)
 #   3: realtime visualization (not aligned)
-display_type: 3
+display_type: 1
 
 #========== Feature extraction ==========#
 num_features: 3000
@@ -90,7 +99,7 @@ num_features: 3000
 #   0: no filtering
 #   1: keypoint filtering
 #   2: match filtering
-filtering_mode: 2
+filtering_mode: 0
 patch_width: 50
 patch_height: 50
 kps_per_patch: 70
@@ -105,7 +114,7 @@ optimizer_verbose: 0
 
 
 #========== Test ==========#
-test_mode: 0
+test_mode: 1
 calc_reprojection_error: 1
 print_conf: 1
 

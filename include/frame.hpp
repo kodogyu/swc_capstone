@@ -7,6 +7,7 @@
 class Frame{
 public:
     Frame();
+    void setKeypointsAndDescriptors(const std::vector<cv::KeyPoint> &keypoints, const cv::Mat &descriptors);
 
     static int total_frame_cnt_;
 
@@ -31,6 +32,4 @@ public:
     // other frame pointers
     std::weak_ptr<Frame> pPrevious_frame_;
     std::weak_ptr<Frame> pNext_frame_;
-
-    void setKeypoints(const std::vector<cv::KeyPoint> &keypoints, const cv::Mat &descriptors);
 };
