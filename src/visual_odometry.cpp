@@ -219,9 +219,8 @@ void VisualOdometry::run() {
             // gtsam::Rot3 rotation = gtsam::Rot3(rotation_mat);
             // gtsam::Point3 translation = gtsam::Point3(translation_mat);
 
-            relative_pose.linear() = rotation_mat;
-            relative_pose.translation() = translation_mat;
-
+            relative_pose.linear() = rotation_mat.transpose();
+            relative_pose.translation() = - rotation_mat.transpose() * translation_mat;
         }
         std::cout << "relative pose:\n" << relative_pose.matrix() << std::endl;
 
