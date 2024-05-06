@@ -87,11 +87,14 @@ int Ransac::getInliers(const Eigen::Matrix3d &fundamental_mat, std::vector<int> 
         Eigen::Vector3d p_prime(image1_kp_pts_[i].x, image1_kp_pts_[i].y, 1);
 
         // epiline
-        l = fundamental_mat * p_prime;
-        l_prime = fundamental_mat.transpose() * p;
+        // l = fundamental_mat * p_prime;
+        // l_prime = fundamental_mat.transpose() * p;
+        l = fundamental_mat.transpose() * p_prime;
+        l_prime = fundamental_mat * p;
 
         // sampson distance 분자, 분모
-        double e = p.transpose() * fundamental_mat * p_prime;
+        // double e = p.transpose() * fundamental_mat * p_prime;
+        double e = p_prime.transpose() * fundamental_mat * p;
         e = e * e;
         double denominator = l[0] * l[0] + l[1] * l[1] + l_prime[0] * l_prime[0] + l_prime[1] * l_prime[1];
 

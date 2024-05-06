@@ -157,9 +157,10 @@ void VisualOdometry::run() {
 
         // TEST
         if (pConfig_->test_mode_) {
-            std::cout << "\n[test mode] custom essential matrix finding" << std::endl;
-            Eigen::Matrix3d essential_mat_eigen = pUtils_->findEssentialMat(pCamera_->intrinsic_, image0_kp_pts, image1_kp_pts, essential_mask, 0.999, 0.05);
-            cv::eigen2cv(essential_mat_eigen, essential_mat);
+            // std::cout << "\n[test mode] custom essential matrix finding" << std::endl;
+            // Eigen::Matrix3d essential_mat_eigen = pUtils_->findEssentialMat(pCamera_->intrinsic_, image0_kp_pts, image1_kp_pts, essential_mask, 0.999, 0.05);
+            // cv::eigen2cv(essential_mat_eigen, essential_mat);
+            essential_mat = cv::findEssentialMat(image0_kp_pts, image1_kp_pts, pCamera_->intrinsic_, cv::RANSAC, 0.999, 1.0, 500, essential_mask);
         }
         else {
             essential_mat = cv::findEssentialMat(image0_kp_pts, image1_kp_pts, pCamera_->intrinsic_, cv::RANSAC, 0.999, 1.0, 500, essential_mask);
@@ -254,11 +255,11 @@ void VisualOdometry::run() {
         auto triangulation_cost = std::chrono::duration_cast<std::chrono::milliseconds>(triangulation_diff).count();
         triangulation_costs_.push_back(triangulation_cost);
 
-        std::vector<Eigen::Vector3d> triangulated_kps;
-        // triangulateKeyPoints(pCurr_frame, image0_kp_pts, image1_kp_pts, triangulated_kps);
-        pUtils_->cv_triangulatePoints(pPrev_frame, image0_kp_pts, pCurr_frame, image1_kp_pts, good_matches, triangulated_kps);
-        pUtils_->drawCvReprojectedLandmarks(pPrev_frame, image0_kp_pts, pCurr_frame, image1_kp_pts, triangulated_kps);
-        // pUtils_->drawReprojectedLandmarks(pCurr_frame, good_matches, essential_mask,  pose_mask, triangulated_kps);
+        std::vector<Eigen::Vector3d> triangulated_kps, triangulated_kps_cv;
+        // pUtils_->cv_triangulatePoints(pPrev_frame, image0_kp_pts, pCurr_frame, image1_kp_pts, good_matches, triangulated_kps);
+        pUtils_->triangulateKeyPoints(pCurr_frame, image0_kp_pts, image1_kp_pts, triangulated_kps);
+        // pUtils_->drawCvReprojectedLandmarks(pPrev_frame, image0_kp_pts, pCurr_frame, image1_kp_pts, triangulated_kps, pose_mask);
+        pUtils_->drawReprojectedLandmarks(pCurr_frame, good_matches, pose_mask, triangulated_kps);
         if (pConfig_->calc_reprojection_error_) {
             double reprojection_error = pUtils_->calcReprojectionError(pCurr_frame, good_matches, pose_mask, triangulated_kps);
             std::cout << "reprojection error: " << reprojection_error << std::endl;
@@ -616,35 +617,6 @@ void VisualOdometry::triangulate3(cv::Mat camera_Matrix, std::shared_ptr<Frame> 
                 pLandmark->observations_.insert({pCurr_frame->id_, good_matches[i].trainIdx});
             }
         }
-    }
-}
-
-// triangulate all keypoints
-void VisualOdometry::triangulateKeyPoints(std::shared_ptr<Frame> &pFrame,
-                                        std::vector<cv::Point2f> img0_kp_pts,
-                                        std::vector<cv::Point2f> img1_kp_pts,
-                                        std::vector<Eigen::Vector3d> &triangulated_kps) {
-    std::shared_ptr<Frame> pPrev_frame = pFrame->pPrevious_frame_.lock();
-
-    Eigen::Matrix3d camera_intrinsic;
-    cv::cv2eigen(pFrame->pCamera_->intrinsic_, camera_intrinsic);
-    Eigen::MatrixXd prev_proj = Eigen::MatrixXd::Identity(3, 4);
-    Eigen::MatrixXd curr_proj = Eigen::MatrixXd::Identity(3, 4);
-
-    prev_proj = camera_intrinsic * prev_proj * pPrev_frame->pose_.inverse().matrix();
-    curr_proj = camera_intrinsic * curr_proj * pFrame->pose_.inverse().matrix();
-
-    for (int i = 0; i < img0_kp_pts.size(); i++) {
-        Eigen::Matrix4d A;
-        A.row(0) = img0_kp_pts[i].x * prev_proj.row(2) - prev_proj.row(0);
-        A.row(1) = img0_kp_pts[i].y * prev_proj.row(2) - prev_proj.row(1);
-        A.row(2) = img1_kp_pts[i].x * curr_proj.row(2) - curr_proj.row(0);
-        A.row(3) = img1_kp_pts[i].y * curr_proj.row(2) - curr_proj.row(1);
-
-        Eigen::JacobiSVD<Eigen::Matrix4d> svd(A, Eigen::ComputeFullU | Eigen::ComputeFullV);
-        Eigen::Vector4d point_3d_homo = svd.matrixV().col(3);
-        Eigen::Vector3d point_3d = point_3d_homo.head(3) / point_3d_homo[3];
-        triangulated_kps.push_back(point_3d);
     }
 }
 

@@ -17,14 +17,15 @@ public:
     void drawReprojectedLandmarks(const std::vector<std::shared_ptr<Frame>> &frames);
     void drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
                                 const std::vector<cv::DMatch> &good_matches,
-                                const cv::Mat &essential_mask,
+                                // const cv::Mat &essential_mask,
                                 const cv::Mat &pose_mask,
                                 const std::vector<Eigen::Vector3d> &triangulated_kps);
     void drawCvReprojectedLandmarks(const std::shared_ptr<Frame> &pPrev_frame,
                                     const std::vector<cv::Point2f> &image0_kp_pts,
                                     const std::shared_ptr<Frame> &pCurr_frame,
                                     const std::vector<cv::Point2f> &image1_kp_pts,
-                                    const std::vector<Eigen::Vector3d> &triangulated_kps);
+                                    const std::vector<Eigen::Vector3d> &triangulated_kps,
+                                    const cv::Mat &pose_mask);
     void drawGrid(cv::Mat &image);
     void drawKeypoints(std::shared_ptr<Frame> pFrame,
                     std::string folder,
@@ -80,6 +81,10 @@ public:
     void cv_triangulatePoints(const std::shared_ptr<Frame>& pPrev_frame, const std::vector<cv::Point2f> &prev_kp_pts,
                                 const std::shared_ptr<Frame>& pCurr_frame, const std::vector<cv::Point2f> &curr_kp_pts,
                                 const std::vector<cv::DMatch> &good_matches, std::vector<Eigen::Vector3d> &keypoints_3d);
+    void triangulateKeyPoints(std::shared_ptr<Frame> &pFrame,
+                                        std::vector<cv::Point2f> img0_kp_pts,
+                                        std::vector<cv::Point2f> img1_kp_pts,
+                                        std::vector<Eigen::Vector3d> &triangulated_kps);
 
 public:
     std::shared_ptr<Configuration> pConfig_;
