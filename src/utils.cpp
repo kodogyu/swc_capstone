@@ -91,7 +91,7 @@ void Utils::drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
         cv::rectangle(prev_frame_img,
                     measurement_point0 - cv::Point2f(5, 5),
                     measurement_point0 + cv::Point2f(5, 5),
-                    pose_mask.at<unsigned char>(i) == 1 ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 255, 255));  // green, (yellow)
+                    pose_mask.at<unsigned char>(i) == 1 ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 127, 255));  // green, (orange)
         cv::circle(prev_frame_img,
                     prev_projected_pts[i],
                     2,
@@ -103,7 +103,7 @@ void Utils::drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
         cv::rectangle(curr_frame_img,
                     measurement_point1 - cv::Point2f(5, 5),
                     measurement_point1 + cv::Point2f(5, 5),
-                    pose_mask.at<unsigned char>(i) == 1 ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 255, 255));  // green, (yellow)
+                    pose_mask.at<unsigned char>(i) == 1 ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 127, 255));  // green, (orange)
         cv::circle(curr_frame_img,
                     curr_projected_pts[i],
                     2,
@@ -174,7 +174,7 @@ void Utils::drawCvReprojectedLandmarks(const std::shared_ptr<Frame> &pPrev_frame
         cv::rectangle(prev_frame_img,
                     measurement_point0 - cv::Point2f(5, 5),
                     measurement_point0 + cv::Point2f(5, 5),
-                    pose_mask.at<unsigned char>(i) == 1 ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 255, 255));  // green, (yellow)
+                    pose_mask.at<unsigned char>(i) == 1 ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 127, 255));  // green, (orange)
 
         // draw reprojected keypoint (prev_frame)
         cv::circle(prev_frame_img,
@@ -192,7 +192,7 @@ void Utils::drawCvReprojectedLandmarks(const std::shared_ptr<Frame> &pPrev_frame
         cv::rectangle(curr_frame_img,
                     measurement_point1 - cv::Point2f(5, 5),
                     measurement_point1 + cv::Point2f(5, 5),
-                    pose_mask.at<unsigned char>(i) == 1 ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 255, 255));  // green, (yellow)
+                    pose_mask.at<unsigned char>(i) == 1 ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 127, 255));  // green, (orange)
 
         // draw reprojected keypoint (curr_frame)
         cv::circle(curr_frame_img,
@@ -635,7 +635,7 @@ void Utils::reprojectLandmarks(const std::shared_ptr<Frame> &pFrame,
                             const std::vector<Eigen::Vector3d> &landmark_points_3d,
                             std::vector<cv::Point2f> &prev_projected_pts,
                             std::vector<cv::Point2f> &curr_projected_pts) {
-    std::cout << "----- Utils::reprojectLandmarks -----" << std::endl;
+    // std::cout << "----- Utils::reprojectLandmarks -----" << std::endl;
     std::shared_ptr<Frame> pPrev_frame = pFrame->pPrevious_frame_.lock();
 
     Eigen::Matrix3d K;
@@ -644,11 +644,13 @@ void Utils::reprojectLandmarks(const std::shared_ptr<Frame> &pFrame,
     Eigen::MatrixXd prev_proj = Eigen::MatrixXd::Identity(3, 4);
     Eigen::MatrixXd curr_proj = Eigen::MatrixXd::Identity(3, 4);
 
+    // prev_proj = K * prev_proj * pPrev_frame->pose_.matrix();
+    // curr_proj = K * curr_proj * pFrame->pose_.matrix();
     prev_proj = K * prev_proj * pPrev_frame->pose_.inverse().matrix();
     curr_proj = K * curr_proj * pFrame->pose_.inverse().matrix();
 
-    std::cout << "prev pose:\n" << pPrev_frame->pose_.matrix() << std::endl;
-    std::cout << "curr pose:\n" << pFrame->pose_.matrix() << std::endl;
+    // std::cout << "prev pose:\n" << pPrev_frame->pose_.matrix() << std::endl;
+    // std::cout << "curr pose:\n" << pFrame->pose_.matrix() << std::endl;
 
     for (int i = 0; i < matches.size(); i++) {
         if (mask.empty() || mask.at<unsigned char>(i) == 1) {
@@ -802,17 +804,18 @@ Eigen::Matrix3d Utils::findFundamentalMat(const std::vector<cv::Point2f> &image0
         Eigen::Vector3d p_prime = P_prime_transform * P_prime.col(i);
 
         // pT * F * p' = 0
-        // Eigen::Matrix3d p_p_prime = p * p_prime.transpose();
-        // Eigen::Map<Eigen::RowVectorXd> p_p_prime_vec(p_p_prime.data(), p_p_prime.size());
+        Eigen::Matrix3d p_p_prime = p * p_prime.transpose();
+        Eigen::Map<Eigen::RowVectorXd> p_p_prime_vec(p_p_prime.data(), p_p_prime.size());
+
+        W.block<1, 9>(i, 0) = p_p_prime_vec;
         // std::cout << "pq[" << i << "] : " << p_p_prime_vec << std::endl;
 
-        // W.block<1, 9>(i, 0) = p_p_prime_vec;
+        // // p'T * F * p = 0
+        // Eigen::Matrix3d p_prime_p = p_prime * p.transpose();
+        // Eigen::Map<Eigen::RowVectorXd> p_prime_p_vec(p_prime_p.data(), p_prime_p.size());
 
-        // p'T * F * p = 0
-        Eigen::Matrix3d p_prime_p = p_prime * p.transpose();
-        Eigen::Map<Eigen::RowVectorXd> p_prime_p_vec(p_prime_p.data(), p_prime_p.size());
+        // W.block<1, 9>(i, 0) = p_prime_p_vec;
 
-        W.block<1, 9>(i, 0) = p_prime_p_vec;
     }
     // std::cout << "Matrix W:\n" << W.matrix() << std::endl;
 
@@ -968,7 +971,7 @@ int Utils::chiralityCheck(const cv::Mat &intrinsic,
                     const std::vector<cv::Point2f> &image1_kp_pts,
                     const Eigen::Isometry3d &cam1_pose,
                     cv::Mat &mask) {
-    std::cout << "----- Utils::chiralityCheck -----" << std::endl;
+    // std::cout << "----- Utils::chiralityCheck -----" << std::endl;
     Eigen::Matrix3d intrinsic_eigen;
     cv::cv2eigen(intrinsic, intrinsic_eigen);
     Eigen::MatrixXd prev_proj = Eigen::MatrixXd::Identity(3, 4);
@@ -1062,10 +1065,12 @@ void Utils::recoverPose(const cv::Mat &intrinsic,
         //                 -0.00302855, -0.00220734,    0.999993;
         // translation_mat << 0.00325004, 0.00744242, -0.999967;
 
+        // rel_pose_candidates[k].linear() = rotation_mat;
+        // rel_pose_candidates[k].translation() = translation_mat;
         rel_pose_candidates[k].linear() = rotation_mat.transpose();
         rel_pose_candidates[k].translation() = - rotation_mat.transpose() * translation_mat;
 
-        std::cout << "pose candidate[" << k << "]:\n" << rel_pose_candidates[k].matrix() << std::endl;
+        // std::cout << "pose candidate[" << k << "]:\n" << rel_pose_candidates[k].matrix() << std::endl;
         // std::cout << "R:\n" << rotation_mat.matrix() << std::endl;
         // std::cout << "t:\n" << translation_mat.matrix() << std::endl;
 
@@ -1157,6 +1162,33 @@ void Utils::triangulateKeyPoints(std::shared_ptr<Frame> &pFrame,
         Eigen::Vector3d point_3d = point_3d_homo.head(3) / point_3d_homo[3];
         triangulated_kps.push_back(point_3d);
     }
+}
+
+// triangulate single keypoint
+void Utils::triangulateKeyPoint(std::shared_ptr<Frame> &pFrame,
+                                        cv::Point2f img0_kp_pt,
+                                        cv::Point2f img1_kp_pt,
+                                        Eigen::Vector3d &triangulated_kp) {
+    std::shared_ptr<Frame> pPrev_frame = pFrame->pPrevious_frame_.lock();
+
+    Eigen::Matrix3d camera_intrinsic;
+    cv::cv2eigen(pFrame->pCamera_->intrinsic_, camera_intrinsic);
+    Eigen::MatrixXd prev_proj = Eigen::MatrixXd::Identity(3, 4);
+    Eigen::MatrixXd curr_proj = Eigen::MatrixXd::Identity(3, 4);
+
+    prev_proj = camera_intrinsic * prev_proj * pPrev_frame->pose_.inverse().matrix();
+    curr_proj = camera_intrinsic * curr_proj * pFrame->pose_.inverse().matrix();
+
+    Eigen::Matrix4d A;
+    A.row(0) = img0_kp_pt.x * prev_proj.row(2) - prev_proj.row(0);
+    A.row(1) = img0_kp_pt.y * prev_proj.row(2) - prev_proj.row(1);
+    A.row(2) = img1_kp_pt.x * curr_proj.row(2) - curr_proj.row(0);
+    A.row(3) = img1_kp_pt.y * curr_proj.row(2) - curr_proj.row(1);
+
+    Eigen::JacobiSVD<Eigen::Matrix4d> svd(A, Eigen::ComputeFullU | Eigen::ComputeFullV);
+    Eigen::Vector4d point_3d_homo = svd.matrixV().col(3);
+    Eigen::Vector3d point_3d = point_3d_homo.head(3) / point_3d_homo[3];
+    triangulated_kp = point_3d;
 }
 
 

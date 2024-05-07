@@ -20,7 +20,7 @@ public:
     void drawPositions(const std::vector<std::pair<int, int>> &positions);
     void displayFramesAndLandmarks(const std::vector<std::shared_ptr<Frame>> &frames);
 
-    void run();
+    void displayPoseRealtime();
     void updateBuffer(const std::shared_ptr<Frame> &pFrame);
     void updateBuffer(const std::vector<std::shared_ptr<Frame>> &frames);
 
@@ -32,6 +32,7 @@ public:
 
     std::mutex buffer_mutex_;
     std::vector<Eigen::Isometry3d> est_pose_buffer_;
+    std::vector<Eigen::Vector3d> est_landmark_buffer_;
     std::vector<Eigen::Isometry3d> gt_buffer_;
 
     std::thread visualizer_thread_;

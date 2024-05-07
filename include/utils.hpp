@@ -85,6 +85,10 @@ public:
                                         std::vector<cv::Point2f> img0_kp_pts,
                                         std::vector<cv::Point2f> img1_kp_pts,
                                         std::vector<Eigen::Vector3d> &triangulated_kps);
+    void triangulateKeyPoint(std::shared_ptr<Frame> &pFrame,
+                                        cv::Point2f img0_kp_pt,
+                                        cv::Point2f img1_kp_pt,
+                                        Eigen::Vector3d &triangulated_kp);
 
 public:
     std::shared_ptr<Configuration> pConfig_;

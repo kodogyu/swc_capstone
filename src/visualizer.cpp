@@ -7,7 +7,7 @@ Visualizer::Visualizer(std::shared_ptr<Configuration> pConfig, std::shared_ptr<U
     newest_pointer_ = 0;
 
     if (pConfig_->display_type_ == DisplayType::REALTIME_VIS) {
-        visualizer_thread_ = std::thread(std::bind(&Visualizer::run, this));
+        visualizer_thread_ = std::thread(std::bind(&Visualizer::displayPoseRealtime, this));
     }
 }
 
@@ -152,7 +152,7 @@ void Visualizer::displayPoseWithKeypoints(const std::vector<Eigen::Isometry3d> &
             .SetHandler(new pangolin::Handler3D(vis_camera));
 
     const float red[3] = {1, 0, 0};
-    const float orange[3] = {1, 0.2, 0};
+    const float orange[3] = {1, 0.5, 0};
     const float yellow[3] = {1, 1, 0};
     const float green[3] = {0, 1, 0};
     const float blue[3] = {0, 0, 1};
@@ -316,7 +316,7 @@ void Visualizer::displayFramesAndLandmarks(const std::vector<std::shared_ptr<Fra
             .SetHandler(new pangolin::Handler3D(vis_camera));
 
     const float red[3] = {1, 0, 0};
-    const float orange[3] = {1, 0.2, 0};
+    const float orange[3] = {1, 0.5, 0};
     const float yellow[3] = {1, 1, 0};
     const float green[3] = {0, 1, 0};
     const float blue[3] = {0, 0, 1};
@@ -397,7 +397,7 @@ void Visualizer::displayFramesAndLandmarks(const std::vector<std::shared_ptr<Fra
     }
 }
 
-void Visualizer::run() {
+void Visualizer::displayPoseRealtime() {
     pangolin::CreateWindowAndBind("Visual Odometry Viewer", 1024, 768);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
@@ -476,6 +476,8 @@ void Visualizer::run() {
         pangolin::FinishFrame();
     }
 }
+
+//! TODO: displayPoseAndLandmarksRealtime()
 
 void Visualizer::updateBuffer(const std::shared_ptr<Frame> &pFrame) {
     // lock buffer mutex
