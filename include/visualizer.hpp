@@ -24,6 +24,13 @@ public:
     void updateBuffer(const std::shared_ptr<Frame> &pFrame);
     void updateBuffer(const std::vector<std::shared_ptr<Frame>> &frames);
 
+    void display(int display_type);
+    void drawPose(const std::shared_ptr<Frame> &pFrame, const float color[], const Eigen::Vector3d& last_center);
+    void drawLandmarks(const std::shared_ptr<Frame> &pFrame, const float color[]);
+    void drawKeypoints(const std::shared_ptr<Frame> &pFrame, const float color[]);
+
+    void setFrameBuffer(const std::vector<std::shared_ptr<Frame>> &frames);
+
     std::shared_ptr<Configuration> pConfig_;
     std::shared_ptr<Utils> pUtils_;
 
@@ -35,5 +42,9 @@ public:
     std::vector<Eigen::Vector3d> est_landmark_buffer_;
     std::vector<Eigen::Isometry3d> gt_buffer_;
 
+    std::vector<std::shared_ptr<Frame>> frame_buffer_;
+
     std::thread visualizer_thread_;
+
+
 };

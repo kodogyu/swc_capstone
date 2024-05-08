@@ -459,7 +459,7 @@ void Utils::loadGT(std::vector<Eigen::Isometry3d> &_gt_poses) {
     _gt_poses = gt_poses;
 }
 
-Eigen::Isometry3d Utils::getGT(int &frame_idx){
+Eigen::Isometry3d Utils::getGT(const int frame_idx){
     std::ifstream gt_poses_file(pConfig_->gt_path_);
     int no_frame;
     double r11, r12, r13, r21, r22, r23, r31, r32, r33, t1, t2, t3;

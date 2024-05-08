@@ -267,11 +267,12 @@ void VisualOdometry::run() {
         // start timer [scaling]
         std::chrono::time_point<std::chrono::steady_clock> scaling_start = std::chrono::steady_clock::now();
 
-        // std::vector<int> scale_mask(pCurr_frame->keypoints_.size(), 0);
-        // double est_scale_ratio = estimateScale(pPrev_frame, pCurr_frame, scale_mask);
-        // double gt_scale_ratio = getGTScale(pCurr_frame);
-        // std::cout << "estimated scale: " << est_scale_ratio << ". GT scale: " << gt_scale_ratio << std::endl;
-        // scales_.push_back(est_scale_ratio);
+        std::vector<int> scale_mask(pCurr_frame->keypoints_.size(), 0);
+        double est_scale_ratio = estimateScale(pPrev_frame, pCurr_frame, scale_mask);
+        double gt_scale_ratio = getGTScale(pCurr_frame);
+        std::cout << "estimated scale: " << est_scale_ratio << ". GT scale: " << gt_scale_ratio << std::endl;
+        scales_.push_back(est_scale_ratio);
+        applyScale(pCurr_frame, gt_scale_ratio, scale_mask);
         // applyScale(pCurr_frame, est_scale_ratio, scale_mask);
 
         // end timer [scaling]
@@ -387,18 +388,8 @@ void VisualOdometry::run() {
     std::cout << "RPEt: " << rpe_trans << std::endl;
 
     //**========== Visualize ==========**//
-    switch(pConfig_->display_type_) {
-        case DisplayType::POSE_ONLY:
-            // pVisualizer_->displayPoses(poses_);
-            pVisualizer_->displayPoses(frames_);
-            break;
-        case DisplayType::POSE_AND_LANDMARKS:
-            pVisualizer_->displayFramesAndLandmarks(frames_);
-            break;
-        case DisplayType::ALIGNED_POSE:
-            pVisualizer_->displayPoses(aligned_est_poses);
-            break;
-    }
+    pVisualizer_->setFrameBuffer(frames_);
+    pVisualizer_->display(pConfig_->display_type_);
 }
 
 cv::Mat VisualOdometry::readImage(int img_entry_idx) {
@@ -628,7 +619,7 @@ double VisualOdometry::calcCovisibleLandmarkDistance(const Frame &frame, const s
 
     landmark_3d_k1 = pPrev_frame->keypoints_3d_[frame.landmarks_[frame.keypoint_landmark_[covisible_feature_idxs[0]].first]->observations_.find(pPrev_frame->id_)->second];
     landmark_id = frame.keypoint_landmark_[covisible_feature_idxs[0]].second;
-    std::cout << "landmark_id[0]: " << landmark_id << std::endl;
+    // std::cout << "landmark_id[0]: " << landmark_id << std::endl;
     for (int i = 1; i < covisible_feature_idxs.size(); i++) {  // i = landmark index
         int curr_frame_landmark_idx = frame.keypoint_landmark_[covisible_feature_idxs[i]].first;
         int prev_frame_keypoint_idx = frame.landmarks_[curr_frame_landmark_idx]->observations_.find(pPrev_frame->id_)->second;
@@ -637,7 +628,7 @@ double VisualOdometry::calcCovisibleLandmarkDistance(const Frame &frame, const s
 
         // print landmark id
         landmark_id = frame.keypoint_landmark_[covisible_feature_idxs[i]].second;
-        std::cout << "landmark_id[" << i << "]: " << landmark_id << std::endl;
+        // std::cout << "landmark_id[" << i << "]: " << landmark_id << std::endl;
 
         acc_distance += (landmark_3d_k - landmark_3d_k1).norm();
 

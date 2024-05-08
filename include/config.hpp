@@ -3,10 +3,14 @@
 #include "common_includes.hpp"
 
 enum DisplayType {
-    POSE_ONLY = 0,
-    POSE_AND_LANDMARKS = 1,
-    ALIGNED_POSE = 2,
-    REALTIME_VIS = 3
+    POSE = 1,
+    LANDMARKS = 2,
+    KEYPOINTS = 4,
+    ALIGNED_POSE = 8,
+    REALTIME_VIS = 16,
+
+    POSE_AND_LANDMARKS = POSE + LANDMARKS,  // POSE + LANDMARKS
+    POSE_AND_KEYPOINTS = POSE + KEYPOINTS,  // POSE + KEYPOINTS
 };
 
 enum FilterMode {

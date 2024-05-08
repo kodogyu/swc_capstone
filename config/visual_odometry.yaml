@@ -4,7 +4,7 @@
 # num_frames:
 #   -1: all frames
 #    n: n frames
-num_frames: 100
+num_frames: 2
 frame_offset: 0
 
 # # KITTI-360
@@ -86,11 +86,13 @@ cy: 185.2157
 #========== Visualize ==========#
 display_gt: 1
 # display_type:
-#   0: pose only (not aligned)
-#   1: pose & landmarks
-#   2: pose only (aligned with gt)
-#   3: realtime visualization (not aligned)
-display_type: 3
+#   draw poses: 1 (not aligned)
+#   draw landmarks: 2
+#   draw keypoints: 4
+#   aligned pose: 8
+#   realtime visualization: 16 (not aligned)
+# display poses & landmarks = 3 (1+2)
+display_type: 5
 
 #========== Feature extraction ==========#
 num_features: 3000
