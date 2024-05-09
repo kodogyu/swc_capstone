@@ -11,7 +11,7 @@ void Utils::drawFramesLandmarks(const std::vector<std::shared_ptr<Frame>> &frame
 
         for (int i = 0; i < pFrame->landmarks_.size(); i++) {
             int keypoint_idx = pFrame->landmarks_[i]->observations_.find(pFrame->id_)->second;
-            cv::Point2f kp_pt = pFrame->keypoints_[keypoint_idx].pt;
+            cv::Point2f kp_pt = pFrame->keypoints_pt_[keypoint_idx];
 
             cv::rectangle(frame_img,
                         kp_pt - cv::Point2f(5, 5),
@@ -23,6 +23,29 @@ void Utils::drawFramesLandmarks(const std::vector<std::shared_ptr<Frame>> &frame
 
         cv::imwrite("output_logs/intra_frames/frame" + std::to_string(pFrame->frame_image_idx_) + "_landmarks.png", frame_img);
     }
+}
+
+void Utils::drawKeypoints(const std::shared_ptr<Frame> &pFrame) {
+    cv::Mat frame_img;
+    cv::cvtColor(pFrame->image_, frame_img, cv::COLOR_GRAY2BGR);
+
+    for (int i = 0; i < pFrame->keypoints_pt_.size(); i++) {
+        cv::Point2f kp_pt = pFrame->keypoints_pt_[i];
+
+        cv::rectangle(frame_img,
+                    kp_pt - cv::Point2f(5, 5),
+                    kp_pt + cv::Point2f(5, 5),
+                    cv::Scalar(0, 255, 0));  // green
+
+        cv::line(frame_img,
+                kp_pt,
+                kp_pt,
+                cv::Scalar(0, 0, 255));  // red
+    }
+    cv::putText(frame_img, "frame" + std::to_string(pFrame->frame_image_idx_),
+                                cv::Point(0, 20), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
+
+    cv::imwrite("output_logs/landmarks/frame" + std::to_string(pFrame->frame_image_idx_) + "_keypoints.png", frame_img);
 }
 
 void Utils::drawReprojectedLandmarks(const std::vector<std::shared_ptr<Frame>> &frames) {
@@ -47,7 +70,7 @@ void Utils::drawReprojectedLandmarks(const std::vector<std::shared_ptr<Frame>> &
 
             cv::Point2f projected_point(projected_point_homo[0] / projected_point_homo[2],
                                         projected_point_homo[1] / projected_point_homo[2]);
-            cv::Point2f measurement_point = pFrame->keypoints_[pLandmark->observations_.find(pFrame->id_)->second].pt;
+            cv::Point2f measurement_point = pFrame->keypoints_pt_[pLandmark->observations_.find(pFrame->id_)->second];
 
             cv::rectangle(frame_img,
                     measurement_point - cv::Point2f(5, 5),
@@ -84,8 +107,8 @@ void Utils::drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
         //     continue;
         // }
 
-        cv::Point2f measurement_point0 = pPrev_frame->keypoints_[good_matches[i].queryIdx].pt;
-        cv::Point2f measurement_point1 = pFrame->keypoints_[good_matches[i].trainIdx].pt;
+        cv::Point2f measurement_point0 = pPrev_frame->keypoints_pt_[good_matches[i].queryIdx];
+        cv::Point2f measurement_point1 = pFrame->keypoints_pt_[good_matches[i].trainIdx];
 
         // draw images
         cv::rectangle(prev_frame_img,
@@ -220,7 +243,8 @@ void Utils::drawKeypoints(std::shared_ptr<Frame> pFrame,
                         std::string tail) {
     int id = pFrame->frame_image_idx_;
     cv::Mat image = pFrame->image_;
-    std::vector<cv::KeyPoint> img_kps = pFrame->keypoints_;
+    // std::vector<cv::KeyPoint> img_kps = pFrame->keypoints_;
+    std::vector<cv::Point2f> img_kps_pt = pFrame->keypoints_pt_;
     cv::Mat image_copy;
 
     if (image.type() == CV_8UC1) {
@@ -230,8 +254,9 @@ void Utils::drawKeypoints(std::shared_ptr<Frame> pFrame,
         image.copyTo(image_copy);
     }
 
-    for (int i = 0; i < img_kps.size(); i++) {
-        cv::Point2f img_kp_pt = img_kps[i].pt;
+    // for (int i = 0; i < img_kps.size(); i++) {
+    for (int i = 0; i < img_kps_pt.size(); i++) {
+        cv::Point2f img_kp_pt = img_kps_pt[i];
         // draw images
         cv::rectangle(image_copy,
                     img_kp_pt - cv::Point2f(5, 5),
@@ -244,7 +269,7 @@ void Utils::drawKeypoints(std::shared_ptr<Frame> pFrame,
     }
     cv::putText(image_copy, "frame" + std::to_string(id),
                                     cv::Point(0, 20), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
-    cv::putText(image_copy, "#features: " + std::to_string(img_kps.size()),
+    cv::putText(image_copy, "#features: " + std::to_string(img_kps_pt.size()),
                                     cv::Point(0, 40), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
 
     cv::imwrite(folder + "/frame" + std::to_string(id) + "_kps" + tail + ".png", image_copy);
@@ -530,7 +555,8 @@ double Utils::calcReprojectionError(const std::vector<std::shared_ptr<Frame>> &f
 
             cv::Point2f projected_point(projected_point_homo[0] / projected_point_homo[2],
                                         projected_point_homo[1] / projected_point_homo[2]);
-            cv::Point2f measurement_point = pFrame->keypoints_[pLandmark->observations_.find(pFrame->id_)->second].pt;
+            // cv::Point2f measurement_point = pFrame->keypoints_[pLandmark->observations_.find(pFrame->id_)->second].pt;
+            cv::Point2f measurement_point = pFrame->keypoints_pt_[pLandmark->observations_.find(pFrame->id_)->second];
 
             cv::Point2f error_vector = projected_point - measurement_point;
             error = sqrt(error_vector.x * error_vector.x + error_vector.y * error_vector.y);
@@ -556,8 +582,10 @@ double Utils::calcReprojectionError(const std::shared_ptr<Frame> &pFrame,
     int point_cnt = 0;
     for (int i = 0; i < landmark_points_3d.size(); i++) {
         if (mask.at<unsigned char>(i) == 1) {
-            cv::Point2f measurement_point0 = pPrev_frame->keypoints_[matches[i].queryIdx].pt;
-            cv::Point2f measurement_point1 = pFrame->keypoints_[matches[i].trainIdx].pt;
+            // cv::Point2f measurement_point0 = pPrev_frame->keypoints_[matches[i].queryIdx].pt;
+            // cv::Point2f measurement_point1 = pFrame->keypoints_[matches[i].trainIdx].pt;
+            cv::Point2f measurement_point0 = pPrev_frame->keypoints_pt_[matches[i].queryIdx];
+            cv::Point2f measurement_point1 = pFrame->keypoints_pt_[matches[i].trainIdx];
 
             cv::Point2f error_prev_pt = (prev_projected_pts[i] - measurement_point0);
             cv::Point2f error_curr_pt = (curr_projected_pts[i] - measurement_point1);
@@ -593,7 +621,8 @@ void Utils::drawCorrespondingFeatures(const std::vector<std::shared_ptr<Frame>> 
                 // frame image
                 cv::Mat frame_img;
                 cv::cvtColor(pTargetFrame->image_, frame_img, cv::COLOR_GRAY2BGR);
-                cv::Point2f keypoint_pt = pTargetFrame->keypoints_[pLandmark->observations_.find(pTargetFrame->frame_image_idx_)->second].pt;
+                // cv::Point2f keypoint_pt = pTargetFrame->keypoints_[pLandmark->observations_.find(pTargetFrame->frame_image_idx_)->second].pt;
+                cv::Point2f keypoint_pt = pTargetFrame->keypoints_pt_[pLandmark->observations_.find(pTargetFrame->frame_image_idx_)->second];
 
                 // camera pose
                 Eigen::Isometry3d w_T_c = pTargetFrame->pose_;
@@ -731,7 +760,7 @@ void Utils::filterMatches(std::shared_ptr<Frame> &pFrame, std::vector<cv::DMatch
 
     // filtering
     for (int i = 0; i < matches.size(); i++) {
-        cv::Point2f kp_pt = pFrame->keypoints_[matches[i].queryIdx].pt;
+        cv::Point2f kp_pt = pFrame->keypoints_pt_[matches[i].queryIdx];
 
         int bin_cnt = bins[kp_pt.y / patch_size.height][kp_pt.x / patch_size.width];
         if (bin_cnt < pConfig_->kps_per_patch_) {

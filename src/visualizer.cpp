@@ -496,8 +496,8 @@ void Visualizer::display(int display_type) {
     const float navy[3] = {0, 0.02, 1};
     const float purple[3] = {0.5, 0, 1};
     const float black[3] = {0, 0, 0};
-    // std::vector<const float*> colors {black, red, orange, yellow, green, blue, navy, purple};
-    std::vector<const float*> colors {black, red, green, orange, yellow, blue, navy, purple};
+    std::vector<const float*> colors {black, red, orange, yellow, green, blue, navy, purple};
+    // std::vector<const float*> colors {black, red, green, orange, yellow, blue, navy, purple};
 
     // load gt trajectory
     std::vector<Eigen::Isometry3d> gt_poses;
@@ -543,6 +543,8 @@ void Visualizer::display(int display_type) {
             if (checkbox_keypoints) {
                 drawKeypoints(pFrame, colors[color_idx]);
             }
+
+            //! TODO covisible landmarks only
 
             last_center = pFrame->pose_.translation();
             color_idx++;
@@ -593,8 +595,10 @@ void Visualizer::drawPose(const std::shared_ptr<Frame> &pFrame, const float colo
 void Visualizer::drawLandmarks(const std::shared_ptr<Frame> &pFrame, const float color[]) {
     glPointSize(5.0f);
     glBegin(GL_POINTS);
+
+    Eigen::Vector3d point;
     for (auto pLandmark : pFrame->landmarks_) {
-        Eigen::Vector3d point = pLandmark->point_3d_;
+        point = pLandmark->point_3d_;
 
         glColor3f(color[0], color[1], color[2]);
         glVertex3d(point[0], point[1], point[2]);
@@ -713,6 +717,24 @@ void Visualizer::drawPositions(const std::vector<std::pair<int, int>> &positions
             last_center = Ow;
         }
     }
+}
+
+void drawKeypoints3DCorrespondingLandmark(const std::shared_ptr<Frame> &pFrame, const float color[]) {
+    glPointSize(5.0f);
+    glBegin(GL_POINTS);
+
+    int frame_id = pFrame->id_;
+    int keypoint_idx;
+    Eigen::Vector3d keypoint_3d;
+    for (int i = 0; i < pFrame->landmarks_.size(); i++) {
+        keypoint_3d = pFrame->keypoints_3d_[i];
+
+        glColor3f(color[0], color[1], color[2]);
+        glVertex3d(keypoint_3d[0], keypoint_3d[1], keypoint_3d[2]);
+    }
+
+
+    glEnd();
 }
 
 

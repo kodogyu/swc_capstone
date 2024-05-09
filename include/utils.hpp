@@ -14,6 +14,7 @@ public:
     Utils(std::shared_ptr<Configuration> pConfig);
 
     void drawFramesLandmarks(const std::vector<std::shared_ptr<Frame>> &frames);
+    void drawKeypoints(const std::shared_ptr<Frame> &pFrame);
     void drawReprojectedLandmarks(const std::vector<std::shared_ptr<Frame>> &frames);
     void drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
                                 const std::vector<cv::DMatch> &good_matches,

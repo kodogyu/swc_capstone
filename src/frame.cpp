@@ -14,6 +14,11 @@ void Frame::setKeypointsAndDescriptors(const std::vector<cv::KeyPoint> &keypoint
     // init keypoints_
     keypoints_ = keypoints;
 
+    // init keypoints_pt_
+    for (int i = 0; i < keypoints_.size(); i++) {
+        keypoints_pt_.push_back(keypoints[i].pt);
+    }
+
     // init descriptors
     descriptors_ = descriptors;
 

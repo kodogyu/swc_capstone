@@ -18,18 +18,21 @@
 #include "config.hpp"
 #include "utils.hpp"
 #include "logger.hpp"
-#include "tester.hpp"
+// #include "tester.hpp"
+
+class Tester;
 
 class VisualOdometry {
 public:
     VisualOdometry(std::string config_path);
+    ~VisualOdometry();
 
     void run();
     cv::Mat readImage(int img_entry_idx);
     void triangulate(cv::Mat cameraMatrix, std::shared_ptr<Frame> &pPrev_frame, std::shared_ptr<Frame> &pCurr_frame, std::vector<cv::DMatch> good_matches, Eigen::Isometry3d relative_pose, std::vector<gtsam::Point3> &frame_keypoints_3d);
     void triangulate2(cv::Mat cameraMatrix, std::shared_ptr<Frame> &pPrev_frame, std::shared_ptr<Frame> &pCurr_frame, const std::vector<cv::DMatch> good_matches, const cv::Mat &mask, std::vector<Eigen::Vector3d> &frame_keypoints_3d);
     void triangulate3(cv::Mat camera_Matrix, std::shared_ptr<Frame> &pPrev_frame, std::shared_ptr<Frame> &pCurr_frame, const std::vector<cv::DMatch> good_matches, const cv::Mat &mask, std::vector<Eigen::Vector3d> &frame_keypoints_3d);
-    double calcCovisibleLandmarkDistance(const Frame &frame, const std::vector<int> &covisible_feature_idxs);
+    double calcCovisibleLandmarkDistance(const std::shared_ptr<Frame> &pFrame, const std::vector<int> &covisible_feature_idxs);
     double estimateScale(const std::shared_ptr<Frame> &pPrev_frame, const std::shared_ptr<Frame> &pCurr_frame, std::vector<int> &scale_mask);
     void applyScale(std::shared_ptr<Frame> &pFrame, const double scale_ratio, const std::vector<int> &scale_mask);
     double getGTScale(std::shared_ptr<Frame> pFrame);
@@ -42,7 +45,8 @@ public:
     std::shared_ptr<Visualizer> pVisualizer_;
     std::shared_ptr<Camera> pCamera_;
     LocalOptimizer optimizer_;
-    Tester tester_;
+    Tester* pTester_;
+
     cv::Ptr<cv::ORB> orb_;
     cv::Ptr<cv::SIFT> sift_;
     cv::Ptr<cv::DescriptorMatcher> orb_matcher_;

@@ -4,7 +4,7 @@
 # num_frames:
 #   -1: all frames
 #    n: n frames
-num_frames: 2
+num_frames: 3
 frame_offset: 0
 
 # # KITTI-360
@@ -95,22 +95,22 @@ display_gt: 1
 display_type: 5
 
 #========== Feature extraction ==========#
-num_features: 3000
+num_features: 300
 
 # filtering_mode:
 #   0: no filtering
 #   1: keypoint filtering
 #   2: match filtering
-filtering_mode: 2
+filtering_mode: 0
 patch_width: 50
 patch_height: 50
-kps_per_patch: 40
+kps_per_patch: 10
 
 #========== Feature matching ==========#
 des_dist_thresh: 0.6
 
 #========== Optimization ==========#
-do_optimize: 1
+do_optimize: 0
 window_size: 5
 optimizer_verbose: 0
 
