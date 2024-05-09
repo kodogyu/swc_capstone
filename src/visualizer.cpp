@@ -17,6 +17,7 @@ Visualizer::~Visualizer() {
     }
 }
 
+
 void Visualizer::displayPoses(const std::vector<Eigen::Isometry3d> &poses) {
     pangolin::CreateWindowAndBind("Visual Odometry Example", 1024, 768);
     glEnable(GL_DEPTH_TEST);
@@ -101,38 +102,6 @@ void Visualizer::displayPoses(const std::vector<std::shared_ptr<Frame>> &frames)
     }
 
     displayPoses(poses);
-}
-
-void Visualizer::drawGT(const std::vector<Eigen::Isometry3d> &_gt_poses) {
-    Eigen::Isometry3d first_pose = _gt_poses[0];
-    Eigen::Vector3d last_center(0.0, 0.0, 0.0);
-
-    for(auto gt_pose : _gt_poses) {
-        gt_pose = first_pose.inverse() * gt_pose;
-        Eigen::Vector3d Ow = gt_pose.translation();
-        Eigen::Vector3d Xw = gt_pose * (0.1 * Eigen::Vector3d(1.0, 0.0, 0.0));
-        Eigen::Vector3d Yw = gt_pose * (0.1 * Eigen::Vector3d(0.0, 1.0, 0.0));
-        Eigen::Vector3d Zw = gt_pose * (0.1 * Eigen::Vector3d(0.0, 0.0, 1.0));
-        glBegin(GL_LINES);
-        glColor3f(1.0, 0.0, 0.0);
-        glVertex3d(Ow[0], Ow[1], Ow[2]);
-        glVertex3d(Xw[0], Xw[1], Xw[2]);
-        glColor3f(0.0, 1.0, 0.0);
-        glVertex3d(Ow[0], Ow[1], Ow[2]);
-        glVertex3d(Yw[0], Yw[1], Yw[2]);
-        glColor3f(0.0, 0.0, 1.0);
-        glVertex3d(Ow[0], Ow[1], Ow[2]);
-        glVertex3d(Zw[0], Zw[1], Zw[2]);
-        glEnd();
-        // draw odometry line
-        glBegin(GL_LINES);
-        glColor3f(0.0, 0.0, 1.0); // blue
-        glVertex3d(last_center[0], last_center[1], last_center[2]);
-        glVertex3d(Ow[0], Ow[1], Ow[2]);
-        glEnd();
-
-        last_center = Ow;
-    }
 }
 
 void Visualizer::displayPoseWithKeypoints(const std::vector<Eigen::Isometry3d> &poses, const std::vector<cv::Mat> &keypoints_3d_vec) {
@@ -227,75 +196,6 @@ void Visualizer::displayPoseWithKeypoints(const std::vector<Eigen::Isometry3d> &
         }
 
         pangolin::FinishFrame();
-    }
-}
-
-void Visualizer::drawPositions(const std::vector<std::pair<int, int>> &positions) {
-    pangolin::CreateWindowAndBind("Visual Odometry Example", 1024, 768);
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    pangolin::OpenGlRenderState vis_camera(
-        pangolin::ProjectionMatrix(1024, 768, 400, 400, 512, 384, 0.1, 1000),
-        pangolin::ModelViewLookAt(0, -3, -3, 0, 0, 0, 0.0, -1.0, 0.0));
-
-    // Add named OpenGL viewport to window and provide 3D Handler
-    pangolin::View& vis_display =
-        pangolin::CreateDisplay()
-            .SetBounds(0.0, 1.0, 0.0, 1.0, -1024.0f / 768.0f)
-            .SetHandler(new pangolin::Handler3D(vis_camera));
-
-    const float blue[3] = {0, 0, 1};
-    const float green[3] = {0, 1, 0};
-
-    while (!pangolin::ShouldQuit()) {
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-        vis_display.Activate(vis_camera);
-
-        // draw the original axis
-        glLineWidth(3);
-        glColor3f(1.0, 0.0, 0.0);
-        glBegin(GL_LINES);
-        glVertex3f(0, 0, 0);
-        glVertex3f(1, 0, 0);
-        glColor3f(0.0, 1.0, 0.0);
-        glVertex3f(0, 0, 0);
-        glVertex3f(0, 1, 0);
-        glColor3f(0.0, 0.0, 1.0);
-        glVertex3f(0, 0, 0);
-        glVertex3f(0, 0, 1);
-        glEnd();
-
-        std::pair<int, int> first_pose = positions[0];
-        Eigen::Vector3d last_center(0.0, 0.0, 0.0);
-
-        for(auto position : positions) {
-            Eigen::Vector3d Ow = Eigen::Vector3d(position.first, position.second, 0);
-            Eigen::Vector3d Xw = (0.1 * Eigen::Vector3d(1.0, 0.0, 0.0));
-            Eigen::Vector3d Yw = (0.1 * Eigen::Vector3d(0.0, 1.0, 0.0));
-            Eigen::Vector3d Zw = (0.1 * Eigen::Vector3d(0.0, 0.0, 1.0));
-            glBegin(GL_LINES);
-            glColor3f(1.0, 0.0, 0.0);
-            glVertex3d(Ow[0], Ow[1], Ow[2]);
-            glVertex3d(Xw[0], Xw[1], Xw[2]);
-            glColor3f(0.0, 1.0, 0.0);
-            glVertex3d(Ow[0], Ow[1], Ow[2]);
-            glVertex3d(Yw[0], Yw[1], Yw[2]);
-            glColor3f(0.0, 0.0, 1.0);
-            glVertex3d(Ow[0], Ow[1], Ow[2]);
-            glVertex3d(Zw[0], Zw[1], Zw[2]);
-            glEnd();
-            // draw odometry line
-            glBegin(GL_LINES);
-            glColor3f(0.0, 0.0, 1.0); // blue
-            glVertex3d(last_center[0], last_center[1], last_center[2]);
-            glVertex3d(Ow[0], Ow[1], Ow[2]);
-            glEnd();
-
-            last_center = Ow;
-        }
     }
 }
 
@@ -397,6 +297,8 @@ void Visualizer::displayFramesAndLandmarks(const std::vector<std::shared_ptr<Fra
     }
 }
 
+
+// display online
 void Visualizer::displayPoseRealtime() {
     pangolin::CreateWindowAndBind("Visual Odometry Viewer", 1024, 768);
     glEnable(GL_DEPTH_TEST);
@@ -480,6 +382,7 @@ void Visualizer::displayPoseRealtime() {
 //! TODO: displayPoseAndLandmarksRealtime()
 
 void Visualizer::updateBuffer(const std::shared_ptr<Frame> &pFrame) {
+    // std::cout << "----- Visualizer::updateBuffer -----" << std::endl;
     // lock buffer mutex
     std::lock_guard<std::mutex> lock(buffer_mutex_);
 
@@ -487,9 +390,10 @@ void Visualizer::updateBuffer(const std::shared_ptr<Frame> &pFrame) {
     if (newest_pointer_ == 0) {
         std::shared_ptr<Frame> pPrev_frame = pFrame->pPrevious_frame_.lock();
         est_pose_buffer_.push_back(pPrev_frame->pose_);
+        gt_buffer_.push_back(pUtils_->getGT(pPrev_frame->frame_image_idx_));
     }
     est_pose_buffer_.push_back(pFrame->pose_);
-    gt_buffer_.push_back(pUtils_->getGT(newest_pointer_));
+    gt_buffer_.push_back(pUtils_->getGT(pFrame->frame_image_idx_));
 
     current_frame_ = pFrame;
 
@@ -506,6 +410,7 @@ void Visualizer::updateBuffer(const std::vector<std::shared_ptr<Frame>> &frames)
     if (newest_pointer_ == 0) {
         std::shared_ptr<Frame> pFirst_frame = frames[0]->pPrevious_frame_.lock();
         est_pose_buffer_.push_back(pFirst_frame->pose_);
+        gt_buffer_.push_back(pUtils_->getGT(pFirst_frame->frame_image_idx_));
     }
 
     // fix optimized poses
@@ -516,29 +421,73 @@ void Visualizer::updateBuffer(const std::vector<std::shared_ptr<Frame>> &frames)
         }
     }
     est_pose_buffer_.push_back(frames[frames.size() - 1]->pose_);
-    gt_buffer_.push_back(pUtils_->getGT(newest_pointer_));
+    gt_buffer_.push_back(pUtils_->getGT(frames[frames.size() - 1]->frame_image_idx_));
 
     current_frame_ = frames[frames.size() - 1];
 
     newest_pointer_++;
 }
 
+
+// display offline
 void Visualizer::display(int display_type) {
     pangolin::CreateWindowAndBind("Visual Odometry Viewer", 1024, 768);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+    // ----- Display Panel -----
     pangolin::OpenGlRenderState vis_camera(
         pangolin::ProjectionMatrix(1024, 768, 400, 400, 512, 384, 0.1, 1000),
         pangolin::ModelViewLookAt(0, -3, -3, 0, 0, 0, 0.0, -1.0, 0.0));
 
+    // Choose a sensible left UI Panel width based on the width of 20
+    // charectors from the default font.
+    const int UI_WIDTH = 20* pangolin::default_font().MaxWidth();
+
     // Add named OpenGL viewport to window and provide 3D Handler
     pangolin::View& vis_display =
         pangolin::CreateDisplay()
-            .SetBounds(0.0, 1.0, 0.0, 1.0, -1024.0f / 768.0f)
+            .SetBounds(0.0, 1.0, pangolin::Attach::Pix(UI_WIDTH), 1.0, -1024.0f / 768.0f)
             .SetHandler(new pangolin::Handler3D(vis_camera));
 
+    // ----- UI Panel-----
+    // Add named Panel and bind to variables beginning 'ui'
+    // A Panel is just a View with a default layout and input handling
+    pangolin::CreatePanel("ui")
+        .SetBounds(0.0, 1.0, 0.0, pangolin::Attach::Pix(UI_WIDTH));
+
+    // checkboxes
+    pangolin::Var<bool> checkbox_poses("ui.Draw Poses",false,true);
+    pangolin::Var<bool> checkbox_landmarks("ui.Draw Landmarks",false,true);
+    pangolin::Var<bool> checkbox_keypoints("ui.Draw Keypoints",false,true);
+    pangolin::Var<bool> checkbox_gt("ui.Draw GT",false,true);
+
+    // std::function objects can be used for Var's too. These work great with C++11 closures.
+    pangolin::Var<std::function<void(void)>> save_window("ui.Save Window", [](){
+        pangolin::SaveWindowOnRender("output_logs/view_images/window");
+    });
+
+    pangolin::Var<std::function<void(void)>> save_cube_view("ui.Save Trajectory view", [&vis_display](){
+        pangolin::SaveWindowOnRender("output_logs/view_images/trajectory", vis_display.v);
+    });
+
+    // initialize checkboxes
+    if (display_type & DisplayType::POSE) {
+        checkbox_poses = true;
+    }
+    if (display_type & DisplayType::LANDMARKS) {
+        checkbox_landmarks = true;
+    }
+    if (display_type & DisplayType::KEYPOINTS) {
+        checkbox_keypoints = true;
+    }
+    if (pConfig_->display_gt_) {
+        checkbox_gt = true;
+    }
+
+    // ----- Draw Trajectory -----
+    // colors
     const float red[3] = {1, 0, 0};
     const float orange[3] = {1, 0.5, 0};
     const float yellow[3] = {1, 1, 0};
@@ -546,8 +495,11 @@ void Visualizer::display(int display_type) {
     const float blue[3] = {0, 0, 1};
     const float navy[3] = {0, 0.02, 1};
     const float purple[3] = {0.5, 0, 1};
-    std::vector<const float*> colors {red, orange, yellow, green, blue, navy, purple};
+    const float black[3] = {0, 0, 0};
+    // std::vector<const float*> colors {black, red, orange, yellow, green, blue, navy, purple};
+    std::vector<const float*> colors {black, red, green, orange, yellow, blue, navy, purple};
 
+    // load gt trajectory
     std::vector<Eigen::Isometry3d> gt_poses;
     pUtils_->loadGT(gt_poses);
 
@@ -570,23 +522,25 @@ void Visualizer::display(int display_type) {
         glVertex3f(0, 0, 1);
         glEnd();
 
-        int color_idx = 0;
-
-        // draw transformed axis
+        // Draw data
         Eigen::Vector3d last_center(0.0, 0.0, 0.0);
-        for (auto pFrame : frame_buffer_) {
-            // draw pose
-            if (display_type & DisplayType::POSE) {
+        drawPose(frame_buffer_[0], colors[0], last_center);  // first frame (원점)
+
+        int color_idx = 1;
+        for (int i = 1; i < frame_buffer_.size(); i++) {
+            std::shared_ptr<Frame> pFrame = frame_buffer_[i];
+            // draw camera pose
+            if (checkbox_poses) {
                 drawPose(pFrame, colors[color_idx], last_center);
             }
 
             // draw map points in world coordinate
-            if (display_type & DisplayType::LANDMARKS) {
+            if (checkbox_landmarks) {
                 drawLandmarks(pFrame, colors[color_idx]);
             }
 
             // draw keypoints_3d in world coordinate
-            if (display_type & DisplayType::KEYPOINTS) {
+            if (checkbox_keypoints) {
                 drawKeypoints(pFrame, colors[color_idx]);
             }
 
@@ -595,9 +549,11 @@ void Visualizer::display(int display_type) {
             color_idx = color_idx % colors.size();
         }
 
-        if (pConfig_->display_gt_) {
+        // GT trajectory
+        if (checkbox_gt) {
             drawGT(gt_poses);
         }
+
         pangolin::FinishFrame();
     }
 }
@@ -657,6 +613,108 @@ void Visualizer::drawKeypoints(const std::shared_ptr<Frame> &pFrame, const float
 
     glEnd();
 }
+
+void Visualizer::drawGT(const std::vector<Eigen::Isometry3d> &_gt_poses) {
+    Eigen::Isometry3d first_pose = _gt_poses[0];
+    Eigen::Vector3d last_center(0.0, 0.0, 0.0);
+
+    for(auto gt_pose : _gt_poses) {
+        gt_pose = first_pose.inverse() * gt_pose;
+        Eigen::Vector3d Ow = gt_pose.translation();
+        Eigen::Vector3d Xw = gt_pose * (0.1 * Eigen::Vector3d(1.0, 0.0, 0.0));
+        Eigen::Vector3d Yw = gt_pose * (0.1 * Eigen::Vector3d(0.0, 1.0, 0.0));
+        Eigen::Vector3d Zw = gt_pose * (0.1 * Eigen::Vector3d(0.0, 0.0, 1.0));
+        glBegin(GL_LINES);
+        glColor3f(1.0, 0.0, 0.0);
+        glVertex3d(Ow[0], Ow[1], Ow[2]);
+        glVertex3d(Xw[0], Xw[1], Xw[2]);
+        glColor3f(0.0, 1.0, 0.0);
+        glVertex3d(Ow[0], Ow[1], Ow[2]);
+        glVertex3d(Yw[0], Yw[1], Yw[2]);
+        glColor3f(0.0, 0.0, 1.0);
+        glVertex3d(Ow[0], Ow[1], Ow[2]);
+        glVertex3d(Zw[0], Zw[1], Zw[2]);
+        glEnd();
+        // draw odometry line
+        glBegin(GL_LINES);
+        glColor3f(0.0, 0.0, 1.0); // blue
+        glVertex3d(last_center[0], last_center[1], last_center[2]);
+        glVertex3d(Ow[0], Ow[1], Ow[2]);
+        glEnd();
+
+        last_center = Ow;
+    }
+}
+
+void Visualizer::drawPositions(const std::vector<std::pair<int, int>> &positions) {
+    pangolin::CreateWindowAndBind("Visual Odometry Example", 1024, 768);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    pangolin::OpenGlRenderState vis_camera(
+        pangolin::ProjectionMatrix(1024, 768, 400, 400, 512, 384, 0.1, 1000),
+        pangolin::ModelViewLookAt(0, -3, -3, 0, 0, 0, 0.0, -1.0, 0.0));
+
+    // Add named OpenGL viewport to window and provide 3D Handler
+    pangolin::View& vis_display =
+        pangolin::CreateDisplay()
+            .SetBounds(0.0, 1.0, 0.0, 1.0, -1024.0f / 768.0f)
+            .SetHandler(new pangolin::Handler3D(vis_camera));
+
+    const float blue[3] = {0, 0, 1};
+    const float green[3] = {0, 1, 0};
+
+    while (!pangolin::ShouldQuit()) {
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+        vis_display.Activate(vis_camera);
+
+        // draw the original axis
+        glLineWidth(3);
+        glColor3f(1.0, 0.0, 0.0);
+        glBegin(GL_LINES);
+        glVertex3f(0, 0, 0);
+        glVertex3f(1, 0, 0);
+        glColor3f(0.0, 1.0, 0.0);
+        glVertex3f(0, 0, 0);
+        glVertex3f(0, 1, 0);
+        glColor3f(0.0, 0.0, 1.0);
+        glVertex3f(0, 0, 0);
+        glVertex3f(0, 0, 1);
+        glEnd();
+
+        std::pair<int, int> first_pose = positions[0];
+        Eigen::Vector3d last_center(0.0, 0.0, 0.0);
+
+        for(auto position : positions) {
+            Eigen::Vector3d Ow = Eigen::Vector3d(position.first, position.second, 0);
+            Eigen::Vector3d Xw = (0.1 * Eigen::Vector3d(1.0, 0.0, 0.0));
+            Eigen::Vector3d Yw = (0.1 * Eigen::Vector3d(0.0, 1.0, 0.0));
+            Eigen::Vector3d Zw = (0.1 * Eigen::Vector3d(0.0, 0.0, 1.0));
+            glBegin(GL_LINES);
+            glColor3f(1.0, 0.0, 0.0);
+            glVertex3d(Ow[0], Ow[1], Ow[2]);
+            glVertex3d(Xw[0], Xw[1], Xw[2]);
+            glColor3f(0.0, 1.0, 0.0);
+            glVertex3d(Ow[0], Ow[1], Ow[2]);
+            glVertex3d(Yw[0], Yw[1], Yw[2]);
+            glColor3f(0.0, 0.0, 1.0);
+            glVertex3d(Ow[0], Ow[1], Ow[2]);
+            glVertex3d(Zw[0], Zw[1], Zw[2]);
+            glEnd();
+            // draw odometry line
+            glBegin(GL_LINES);
+            glColor3f(0.0, 0.0, 1.0); // blue
+            glVertex3d(last_center[0], last_center[1], last_center[2]);
+            glVertex3d(Ow[0], Ow[1], Ow[2]);
+            glEnd();
+
+            last_center = Ow;
+        }
+    }
+}
+
 
 void Visualizer::setFrameBuffer(const std::vector<std::shared_ptr<Frame>> &frames) {
     frame_buffer_ = frames;

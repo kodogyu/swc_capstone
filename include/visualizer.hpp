@@ -1,6 +1,7 @@
 #pragma once
 
 #include <pangolin/pangolin.h>
+#include <pangolin/display/default_font.h>
 
 #include "common_includes.hpp"
 #include "frame.hpp"
@@ -15,19 +16,21 @@ public:
 
     void displayPoses(const std::vector<Eigen::Isometry3d> &poses);
     void displayPoses(const std::vector<std::shared_ptr<Frame>> &frames);
-    void drawGT(const std::vector<Eigen::Isometry3d> &_gt_poses);
     void displayPoseWithKeypoints(const std::vector<Eigen::Isometry3d> &poses, const std::vector<cv::Mat> &keypoints_3d_vec);
-    void drawPositions(const std::vector<std::pair<int, int>> &positions);
     void displayFramesAndLandmarks(const std::vector<std::shared_ptr<Frame>> &frames);
 
+    // display online
     void displayPoseRealtime();
     void updateBuffer(const std::shared_ptr<Frame> &pFrame);
     void updateBuffer(const std::vector<std::shared_ptr<Frame>> &frames);
 
+    // display offline
     void display(int display_type);
     void drawPose(const std::shared_ptr<Frame> &pFrame, const float color[], const Eigen::Vector3d& last_center);
     void drawLandmarks(const std::shared_ptr<Frame> &pFrame, const float color[]);
     void drawKeypoints(const std::shared_ptr<Frame> &pFrame, const float color[]);
+    void drawGT(const std::vector<Eigen::Isometry3d> &_gt_poses);
+    void drawPositions(const std::vector<std::pair<int, int>> &positions);
 
     void setFrameBuffer(const std::vector<std::shared_ptr<Frame>> &frames);
 
