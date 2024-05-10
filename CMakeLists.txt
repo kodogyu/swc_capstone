@@ -39,6 +39,7 @@ add_executable(visual_odometry
     src/visual_odometry.cpp
     src/visualizer.cpp)
 target_link_libraries(visual_odometry ${OpenCV_LIBS} ${Pangolin_LIBRARIES} gtsam)
+target_compile_definitions(visual_odometry PUBLIC OPENCV_DISABLE_EIGEN_TENSOR_SUPPORT=1)
 
 add_executable(view_gt
     src/visualizer.cpp
