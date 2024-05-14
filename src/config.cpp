@@ -39,6 +39,7 @@ void Configuration::parse() {
     display_gt_ = static_cast<bool>(static_cast<int>(config_file["display_gt"]));
 
     // Feature extraction
+    feature_extractor_ = config_file["feature_extractor"];
     num_features_ = config_file["num_features"];
     filtering_mode_ = config_file["filtering_mode"];
     patch_width_ = config_file["patch_width"];
@@ -129,6 +130,7 @@ void Configuration::print() {
 
     // Feature extraction
     std::cout << "[Feature Extraction]" << std::endl;
+    std::cout << "feature_extractor: " << feature_extractor_ << "\n";
     std::cout << "num_features: " << num_features_ << "\n";
     std::cout << "filtering_mode: " << filtering_mode_ << "\n";
     std::cout << "patch_width: " << patch_width_ << "\n";

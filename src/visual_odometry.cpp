@@ -37,6 +37,7 @@ void VisualOdometry::run() {
     pPrev_frame->frame_image_idx_ = pConfig_->frame_offset_;
     pPrev_frame->pCamera_ = pCamera_;
     frames_.push_back(pPrev_frame);
+    frame_window_.push_back(pPrev_frame);
 
     for (int run_iter = 1; run_iter < pConfig_->num_frames_; run_iter++) {
         // start timer [total time cost]
@@ -75,13 +76,11 @@ void VisualOdometry::run() {
             if (run_iter == 1) {  // first run
                 cv::Mat prev_image_descriptors;
                 std::vector<cv::KeyPoint> prev_image_keypoints;
-                orb_->detectAndCompute(pPrev_frame->image_, cv::Mat(), prev_image_keypoints, prev_image_descriptors);
-                // sift_->detectAndCompute(pPrev_frame->image_, cv::Mat(), prev_image_keypoints, prev_image_descriptors);
+                detectAndCompute(pPrev_frame->image_, cv::Mat(), prev_image_keypoints, prev_image_descriptors);
                 pPrev_frame->setKeypointsAndDescriptors(prev_image_keypoints, prev_image_descriptors);
                 pUtils_->drawKeypoints(pPrev_frame);
             }
-            orb_->detectAndCompute(pCurr_frame->image_, cv::Mat(), curr_image_keypoints, curr_image_descriptors);
-            // sift_->detectAndCompute(pCurr_frame->image_, cv::Mat(), curr_image_keypoints, curr_image_descriptors);
+            detectAndCompute(pCurr_frame->image_, cv::Mat(), curr_image_keypoints, curr_image_descriptors);
             pCurr_frame->setKeypointsAndDescriptors(curr_image_keypoints, curr_image_descriptors);
             pUtils_->drawKeypoints(pCurr_frame);
 
@@ -132,6 +131,9 @@ void VisualOdometry::run() {
                 image1_kp_pts.push_back(pCurr_frame->keypoints_pt_[match.trainIdx]);
             }
 
+            // set keyframe matches
+            pTester_->setFrameMatches(pCurr_frame, good_matches_test);
+
             raw_matches_size = pTester_->manual_matches_vec[run_iter - 1].size();
             good_matches_size = good_matches_test.size();
         }
@@ -141,10 +143,8 @@ void VisualOdometry::run() {
             // image0 & image1 (matcher matching)
             std::vector<std::vector<cv::DMatch>> image_matches01_vec;
             std::vector<std::vector<cv::DMatch>> image_matches10_vec;
-            orb_matcher_->knnMatch(pPrev_frame->descriptors_, pCurr_frame->descriptors_, image_matches01_vec, 2);  // prev -> curr matches
-            orb_matcher_->knnMatch(pCurr_frame->descriptors_, pPrev_frame->descriptors_, image_matches10_vec, 2);  // curr -> prev matches
-            // sift_matcher_->knnMatch(pPrev_frame->descriptors_, pCurr_frame->descriptors_, image_matches01_vec, 2);  // prev -> curr matches
-            // sift_matcher_->knnMatch(pCurr_frame->descriptors_, pPrev_frame->descriptors_, image_matches10_vec, 2);  // curr -> prev matches
+            knnMatch(pPrev_frame->descriptors_, pCurr_frame->descriptors_, image_matches01_vec, 2);  // prev -> curr matches
+            knnMatch(pCurr_frame->descriptors_, pPrev_frame->descriptors_, image_matches10_vec, 2);  // curr -> prev matches
 
             raw_matches_size = image_matches01_vec.size();
 
@@ -192,6 +192,8 @@ void VisualOdometry::run() {
             }
         }
 
+        // set frame matches
+        pCurr_frame->setFrameMatches(good_matches);
 
         std::cout << "original features for image" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + std::to_string(pCurr_frame->frame_image_idx_) + ": " << raw_matches_size << std::endl;
         std::cout << "good features for image" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + std::to_string(pCurr_frame->frame_image_idx_) + ": " << good_matches_size << std::endl;
@@ -237,6 +239,7 @@ void VisualOdometry::run() {
         if (pConfig_->test_mode_) {
             std::cout << "\n[test mode] Motion estimation" << std::endl;
             pUtils_->recoverPose(pCamera_->intrinsic_, essential_mat, image0_kp_pts, image1_kp_pts, relative_pose, pose_mask);
+            // relative_pose = pUtils_->getGT(pPrev_frame->frame_image_idx_).inverse() * pUtils_->getGT(pCurr_frame->frame_image_idx_);
         }
         //* Normal mode
         else {
@@ -256,6 +259,8 @@ void VisualOdometry::run() {
 
             relative_pose.linear() = rotation_mat.transpose();
             relative_pose.translation() = - rotation_mat.transpose() * translation_mat;
+            // //! test
+            // relative_pose = pUtils_->getGT(pPrev_frame->frame_image_idx_).inverse() * pUtils_->getGT(pCurr_frame->frame_image_idx_);
         }
 
         std::cout << "relative pose:\n" << relative_pose.matrix() << std::endl;
@@ -283,6 +288,7 @@ void VisualOdometry::run() {
             std::cout << "\n[test mode] Triangulation" << std::endl;
 
             pTester_->triangulate3(*this, pCamera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches_test, pose_mask, keypoints_3d);
+            std::cout << "[debug] Triangulation done." << std::endl;
         }
         //* Normal mode
         else {
@@ -329,6 +335,7 @@ void VisualOdometry::run() {
         double gt_scale_ratio = getGTScale(pCurr_frame);
         std::cout << "estimated scale: " << est_scale_ratio << ". GT scale: " << gt_scale_ratio << std::endl;
         scales_.push_back(est_scale_ratio);
+        gt_scales_.push_back(gt_scale_ratio);
         // applyScale(pCurr_frame, gt_scale_ratio, scale_mask);
         // applyScale(pCurr_frame, est_scale_ratio, scale_mask);
 
@@ -350,17 +357,18 @@ void VisualOdometry::run() {
         // start timer [optimization]
         const std::chrono::time_point<std::chrono::steady_clock> optimization_start = std::chrono::steady_clock::now();
         if (pConfig_->do_optimize_) {
-            if (pCurr_frame->id_ % 1 == 0) {
-                frame_window_.push_back(pCurr_frame);
-                if (frame_window_.size() > pConfig_->window_size_) {
-                    frame_window_.erase(frame_window_.begin());
-                }
-                if (frame_window_.size() == pConfig_->window_size_) {
-                    double reprojection_error = pUtils_->calcReprojectionError(frame_window_);
-                    std::cout << "calculated reprojection error: " << reprojection_error << std::endl;
+            frame_window_.push_back(pCurr_frame);
 
-                    optimizer_.optimizeFrames(frame_window_, pConfig_->optimizer_verbose_);
-                }
+            if (frame_window_.size() > pConfig_->window_size_) {
+                frame_window_.erase(frame_window_.begin());
+            }
+            if (frame_window_.size() == pConfig_->window_size_) {
+                double reprojection_error = pUtils_->calcReprojectionError(frame_window_);
+
+                std::cout << "calculated reprojection error: " << reprojection_error << std::endl;
+
+                // Optimize (BA)
+                optimizer_.optimizeFrames(frame_window_, pConfig_->optimizer_verbose_);
             }
         }
         // end timer [optimization]
@@ -422,9 +430,9 @@ void VisualOdometry::run() {
                         total_time_costs_);
 
     // scales
-    std::vector<double> gt_scales;
-    getGTScales(pConfig_->gt_path_, pConfig_->is_kitti_, pConfig_->num_frames_, gt_scales);
-    logger_.logScales(scales_, gt_scales);
+    // std::vector<double> gt_scales;
+    // getGTScales(pConfig_->gt_path_, pConfig_->is_kitti_, pConfig_->num_frames_, gt_scales);
+    logger_.logScales(scales_, gt_scales_);
 
     // RPE
     std::vector<Eigen::Isometry3d> gt_poses, aligned_est_poses;
@@ -583,6 +591,8 @@ void VisualOdometry::triangulate3(cv::Mat camera_Matrix,
                                     const std::vector<cv::DMatch> good_matches,
                                     const cv::Mat &mask,
                                     std::vector<Eigen::Vector3d> &frame_keypoints_3d) {
+    std::cout << "----- VisualOdometry::triangulate3 -----" << std::endl;
+
     Eigen::Matrix3d camera_intrinsic;
     Eigen::MatrixXd prev_proj(3, 4);
     Eigen::MatrixXd curr_proj(3, 4);
@@ -598,32 +608,68 @@ void VisualOdometry::triangulate3(cv::Mat camera_Matrix,
             cv::Point2f prev_frame_kp_pt = pPrev_frame->keypoints_pt_[good_matches[i].queryIdx];
             cv::Point2f curr_frame_kp_pt = pCurr_frame->keypoints_pt_[good_matches[i].trainIdx];
 
+            // keypoint가 이전 프레임에서 이제까지 한번도 landmark로 선택되지 않았는지 확인 (보존하고 있는 frame에 한해서 검사)
+            bool found_landmark = false;
+            int kp_idx = good_matches[i].queryIdx;
+            std::shared_ptr<Frame> pPrevNFrame = pPrev_frame;
+            int landmark_frame_id = -1;
+            int landmark_id = -1;
+
+            while (pPrevNFrame->id_ > 0) {
+                // std::cout << "[debug] pPrevNFrame id: " << pPrevNFrame->id_ << std::endl;
+
+                landmark_frame_id = pPrevNFrame->id_;
+                landmark_id = pPrevNFrame->keypoint_landmark_.at(kp_idx).second;
+                found_landmark = (landmark_id != -1);
+
+                // std::cout << "[debug] kp_idx: " << kp_idx << std::endl;
+                // std::cout << "[debug] landmark_frame_id: " << landmark_frame_id << std::endl;
+                // std::cout << "[debug] landmark_id: " << landmark_id << std::endl;
+                // std::cout << "[debug] found_landmark: " << found_landmark << std::endl;
+
+                if (found_landmark) {
+                    break;
+                }
+
+                kp_idx = pPrevNFrame->matches_with_prev_frame_.at(kp_idx);
+                pPrevNFrame = pPrevNFrame->pPrevious_frame_.lock();
+
+                if(kp_idx < 0) {
+                    break;
+                }
+            }
+
             // hard matching
-            if (pPrev_frame->keypoint_landmark_[good_matches[i].queryIdx].second != -1) {  // landmark already exists
+            if (found_landmark) {  // landmark already exists
                 new_landmark = false;
 
-                int landmark_idx = pPrev_frame->keypoint_landmark_[good_matches[i].queryIdx].first;
-                auto pLandmark = pPrev_frame->landmarks_[landmark_idx];
+                int landmark_idx = pPrevNFrame->keypoint_landmark_[kp_idx].first;
+                std::shared_ptr<Landmark> pLandmark = pPrevNFrame->landmarks_[landmark_idx];
 
                 // compare landmark descriptor similarity for all other frames
                 cv::Mat new_descriptors = pCurr_frame->descriptors_;
                 int new_desc_idx = good_matches[i].trainIdx;
-                for (auto observation : pLandmark->observations_) {
+                // std::cout << "[debug] landmark observation size: " << pLandmark->observations_.size() << std::endl;
+
+                for (std::pair<int, int> observation : pLandmark->observations_) {
+                // for (std::map<int, int>::iterator map_itr = pLandmark->observations_.begin(); map_itr != pLandmark->observations_.end(); map_itr++) {
                     int frame_id = observation.first;
                     int target_desc_idx = observation.second;
+                    // std::cout << "[debug] frame_id: " << frame_id << std::endl;
+                    // std::cout << "[debug] target_desc_idx: " << target_desc_idx << std::endl;
 
                     cv::Mat target_descriptors = frames_[frame_id]->descriptors_;
 
                     std::vector<cv::DMatch> match_new_target, match_target_new;
-                    orb_matcher_->match(new_descriptors, target_descriptors, match_new_target);
-                    orb_matcher_->match(target_descriptors, new_descriptors, match_target_new);
-                    // sift_matcher_->match(new_descriptors, target_descriptors, match_new_target);
-                    // sift_matcher_->match(target_descriptors, new_descriptors, match_target_new);
+                    match(new_descriptors, target_descriptors, match_new_target);
+                    match(target_descriptors, new_descriptors, match_target_new);
+
                     if ((match_new_target[new_desc_idx].trainIdx != target_desc_idx) ||  // new -> target에서 매칭되어야 함
                             (match_target_new[target_desc_idx].trainIdx != new_desc_idx)) {  // target -> new에서도 매칭되어야 함
                         landmark_accepted = false;
                         break;
                     }
+                    // std::cout << "[debug] -----" << std::endl;
                 }
             }
 
@@ -631,11 +677,15 @@ void VisualOdometry::triangulate3(cv::Mat camera_Matrix,
             Eigen::Vector3d w_keypoint_3d;  // keypoint coordinate in world frame
             pUtils_->triangulateKeyPoint(pCurr_frame, prev_frame_kp_pt, curr_frame_kp_pt, w_keypoint_3d);
 
+            // std::cout << "[debug] new_landmark: " << new_landmark << std::endl;
+            // std::cout << "[debug] landmark_accepted: " << landmark_accepted << std::endl;
+
             if (new_landmark) {
                 std::shared_ptr<Landmark> pLandmark = std::make_shared<Landmark>();
                 pLandmark->observations_.insert({pPrev_frame->id_, good_matches[i].queryIdx});
                 pLandmark->observations_.insert({pCurr_frame->id_, good_matches[i].trainIdx});
                 pLandmark->point_3d_ = w_keypoint_3d;
+                // std::cout << "[debug] new_landmark-----" << std::endl;
 
                 pPrev_frame->landmarks_.push_back(pLandmark);
                 pPrev_frame->keypoint_landmark_[good_matches[i].queryIdx] = std::pair(pPrev_frame->landmarks_.size() - 1, pLandmark->id_);
@@ -645,20 +695,22 @@ void VisualOdometry::triangulate3(cv::Mat camera_Matrix,
                 pCurr_frame->keypoints_3d_[good_matches[i].trainIdx] = w_keypoint_3d;
 
                 frame_keypoints_3d.push_back(w_keypoint_3d);
+                // std::cout << "[debug] -----" << std::endl;
             }
             else if (landmark_accepted) {
                 // add information to curr_frame
-                std::pair<int, int> prev_frame_kp_lm = pPrev_frame->keypoint_landmark_[good_matches[i].queryIdx];
-                int landmark_id = prev_frame_kp_lm.second;
-                pCurr_frame->landmarks_.push_back(pPrev_frame->landmarks_[prev_frame_kp_lm.first]);
-                pCurr_frame->keypoint_landmark_[good_matches[i].trainIdx] = std::pair(pCurr_frame->landmarks_.size(), landmark_id);
+                std::pair<int, int> prev_n_frame_kp_lm = pPrevNFrame->keypoint_landmark_[kp_idx];
+                pCurr_frame->landmarks_.push_back(pPrevNFrame->landmarks_[prev_n_frame_kp_lm.first]);
+                pCurr_frame->keypoint_landmark_[good_matches[i].trainIdx] = std::pair(pCurr_frame->landmarks_.size() - 1, landmark_id);
                 pCurr_frame->keypoints_3d_[good_matches[i].trainIdx] = w_keypoint_3d;
+                // std::cout << "[debug] landmark_accepted-----" << std::endl;
 
                 // add information to the landmark
-                std::shared_ptr<Landmark> pLandmark = pPrev_frame->landmarks_[prev_frame_kp_lm.first];
+                std::shared_ptr<Landmark> pLandmark = pPrevNFrame->landmarks_[prev_n_frame_kp_lm.first];
                 pLandmark->observations_.insert({pCurr_frame->id_, good_matches[i].trainIdx});
 
                 frame_keypoints_3d.push_back(w_keypoint_3d);
+                // std::cout << "[debug] -----" << std::endl;
             }
         }
     }
@@ -743,7 +795,8 @@ double VisualOdometry::estimateScale(const std::shared_ptr<Frame> &pPrev_frame, 
     double prev_frame_landmark_distance = calcCovisibleLandmarkDistance(pPrev_frame, prev_frame_covisible_feature_idxs);
     double curr_frame_landmark_distance = calcCovisibleLandmarkDistance(pCurr_frame, curr_frame_covisible_feature_idxs);
 
-    scale_ratio = curr_frame_landmark_distance / prev_frame_landmark_distance;
+    // scale_ratio = curr_frame_landmark_distance / prev_frame_landmark_distance;
+    scale_ratio = prev_frame_landmark_distance / curr_frame_landmark_distance;
 
     return scale_ratio;
 }
@@ -751,11 +804,10 @@ double VisualOdometry::estimateScale(const std::shared_ptr<Frame> &pPrev_frame, 
 void VisualOdometry::applyScale(std::shared_ptr<Frame> &pFrame, const double scale_ratio, const std::vector<int> &scale_mask) {
     for (int i = 0; i < scale_mask.size(); i++) {
         if (scale_mask[i] == 1) {
-            // depth
-            pFrame->depths_[i] *= scale_ratio;
+            // // depth
+            // pFrame->depths_[i] *= scale_ratio;
 
             // relative pose
-            Eigen::Isometry3d relative_pose_old = pFrame->relative_pose_;  // copy relative pose
             pFrame->relative_pose_.translation() *= scale_ratio;    // apply scale
 
             // pose
@@ -764,22 +816,22 @@ void VisualOdometry::applyScale(std::shared_ptr<Frame> &pFrame, const double sca
             Eigen::Isometry3d scaled_pose = prev_pose * pFrame->relative_pose_;  // apply scale
             pFrame->pose_ = scaled_pose;
 
-            // feature_3d
-            Eigen::Vector3d w_feature_3d_old = pFrame->keypoints_3d_[i];
-            Eigen::Vector3d feature_versor;
-            feature_versor[0] = (pFrame->keypoints_pt_[i].x - pFrame->pCamera_->cx_) / pFrame->pCamera_->fx_;
-            feature_versor[1] = (pFrame->keypoints_pt_[i].y - pFrame->pCamera_->cy_) / pFrame->pCamera_->fy_;
-            feature_versor[2] = 1.0;
-            Eigen::Vector3d w_feature_3d = pFrame->pose_ * (feature_versor * pFrame->depths_[i]);  // scaled 3d feature point (in world frame)
-            pFrame->keypoints_3d_[i] = w_feature_3d;
+            // // feature_3d
+            // Eigen::Vector3d w_feature_3d_old = pFrame->keypoints_3d_[i];
+            // Eigen::Vector3d feature_versor;
+            // feature_versor[0] = (pFrame->keypoints_pt_[i].x - pFrame->pCamera_->cx_) / pFrame->pCamera_->fx_;
+            // feature_versor[1] = (pFrame->keypoints_pt_[i].y - pFrame->pCamera_->cy_) / pFrame->pCamera_->fy_;
+            // feature_versor[2] = 1.0;
+            // Eigen::Vector3d w_feature_3d = pFrame->pose_ * (feature_versor * pFrame->depths_[i]);  // scaled 3d feature point (in world frame)
+            // pFrame->keypoints_3d_[i] = w_feature_3d;
 
-            // landmark position
-            int landmark_idx = pFrame->keypoint_landmark_[i].first;
-            std::shared_ptr<Landmark> pLandmark = pFrame->landmarks_[landmark_idx];
+            // // landmark position
+            // int landmark_idx = pFrame->keypoint_landmark_[i].first;
+            // std::shared_ptr<Landmark> pLandmark = pFrame->landmarks_[landmark_idx];
 
-            if (pLandmark->point_3d_ == w_feature_3d_old) {
-                pLandmark->point_3d_ = w_feature_3d;
-            }
+            // if (pLandmark->point_3d_ == w_feature_3d_old) {
+            //     pLandmark->point_3d_ = w_feature_3d;
+            // }
         }
     }
 }
@@ -853,6 +905,33 @@ void VisualOdometry::getGTScales(const std::string gt_path, bool is_kitti, int n
 
         prev_position = curr_position;
         prev_trans_length = trans_length;
+    }
+}
+
+void VisualOdometry::detectAndCompute(const cv::Mat &image, cv::Mat mask, std::vector<cv::KeyPoint> &keypoints, cv::Mat &descriptors) {
+    if (pConfig_->feature_extractor_ == 0) {    // ORB
+        orb_->detectAndCompute(image, mask, keypoints, descriptors);
+    }
+    else if (pConfig_->feature_extractor_ == 1) {   // SIFT
+        sift_->detectAndCompute(image, mask, keypoints, descriptors);
+    }
+}
+
+void VisualOdometry::knnMatch(const cv::Mat& queryDescriptors, const cv::Mat& trainDescriptors, std::vector<std::vector<cv::DMatch>> &image_matches01_vec, int k) {
+    if (pConfig_->feature_extractor_ == 0) {    // ORB
+        orb_matcher_->knnMatch(queryDescriptors, trainDescriptors, image_matches01_vec, k);  // prev -> curr matches
+    }
+    else if (pConfig_->feature_extractor_ == 1) {   // SIFT
+        sift_matcher_->knnMatch(queryDescriptors, trainDescriptors, image_matches01_vec, k);  // prev -> curr matches
+    }
+}
+
+void VisualOdometry::match(const cv::Mat &queryDescriptors, const cv::Mat &trainDescriptors, std::vector<cv::DMatch> &matches) {
+    if (pConfig_->feature_extractor_ == 0) {    // ORB
+        orb_matcher_->match(queryDescriptors, trainDescriptors, matches);
+    }
+    else if (pConfig_->feature_extractor_ == 1) {    // SIFT
+        sift_matcher_->match(queryDescriptors, trainDescriptors, matches);
     }
 }
 

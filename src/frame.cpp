@@ -18,9 +18,16 @@ void Frame::setKeypointsAndDescriptors(const std::vector<cv::KeyPoint> &keypoint
     for (int i = 0; i < keypoints_.size(); i++) {
         keypoints_pt_.push_back(keypoints[i].pt);
     }
+    // subpixel
+    cv::TermCriteria criteria = cv::TermCriteria( cv::TermCriteria::EPS + cv::TermCriteria::COUNT, 40, 0.001 );
+    cv::cornerSubPix(image_, keypoints_pt_, cv::Size(5, 5), cv::Size(-1, -1), criteria);
 
     // init descriptors
     descriptors_ = descriptors;
+
+    // init matches
+    matches_with_prev_frame_ = std::vector<int>(keypoints.size(), -1);
+    matches_with_next_frame_ = std::vector<int>(keypoints.size(), -1);
 
     // init 3D keypoints
     keypoints_3d_.assign(keypoints.size(), Eigen::Vector3d(0.0, 0.0, 0.0));
@@ -31,3 +38,20 @@ void Frame::setKeypointsAndDescriptors(const std::vector<cv::KeyPoint> &keypoint
     // init keypoint_landmark_
     keypoint_landmark_.assign(keypoints.size(), std::pair(-1, -1));
 }
+
+void Frame::setFrameMatches(const std::vector<cv::DMatch> &matches_with_prev_frame) {
+    int queryIdx, trainIdx;
+    std::shared_ptr<Frame> pPrev_frame = pPrevious_frame_.lock();
+
+    for (int i = 0; i < matches_with_prev_frame.size(); i++) {
+        queryIdx = matches_with_prev_frame[i].queryIdx;
+        trainIdx = matches_with_prev_frame[i].trainIdx;
+
+        matches_with_prev_frame_[queryIdx] = trainIdx;
+        pPrev_frame->matches_with_next_frame_[trainIdx] = queryIdx;
+    }
+}
+
+
+
+

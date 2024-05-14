@@ -408,7 +408,7 @@ void Visualizer::updateBuffer(const std::vector<std::shared_ptr<Frame>> &frames)
 
     // first frame
     if (newest_pointer_ == 0) {
-        std::shared_ptr<Frame> pFirst_frame = frames[0]->pPrevious_frame_.lock();
+        std::shared_ptr<Frame> pFirst_frame = frames[0];
         est_pose_buffer_.push_back(pFirst_frame->pose_);
         gt_buffer_.push_back(pUtils_->getGT(pFirst_frame->frame_image_idx_));
     }
@@ -496,8 +496,11 @@ void Visualizer::display(int display_type) {
     const float navy[3] = {0, 0.02, 1};
     const float purple[3] = {0.5, 0, 1};
     const float black[3] = {0, 0, 0};
-    std::vector<const float*> colors {black, red, orange, yellow, green, blue, navy, purple};
+    const float skyblue[3] = {0.337, 0.706, 0.914};
+    const float purple2[3] = {0.8, 0.475, 0.655};
+
     // std::vector<const float*> colors {black, red, green, orange, yellow, blue, navy, purple};
+    std::vector<const float*> colors {black, red, green, blue, orange, navy, purple, skyblue, purple2};
 
     // load gt trajectory
     std::vector<Eigen::Isometry3d> gt_poses;

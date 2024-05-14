@@ -54,6 +54,7 @@ public:
     bool display_gt_;
 
     // Feature extraction
+    int feature_extractor_;
     int num_features_;
     int filtering_mode_;
     int patch_width_;

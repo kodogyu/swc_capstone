@@ -49,12 +49,16 @@ void LocalOptimizer::optimizeFrames(std::vector<std::shared_ptr<Frame>> &frames,
                 landmark_idx = landmark_map_itr->second;
             }
             // 2D measurement
-            cv::Point2f measurement_cv = pFrame->keypoints_[pLandmark->observations_.find(pFrame->id_)->second].pt;
-            gtsam::Point2 measurement(measurement_cv.x, measurement_cv.y);
-            // add measurement factor
-            graph.emplace_shared<gtsam::GenericProjectionFactor<gtsam::Pose3, gtsam::Point3, gtsam::Cal3_S2>>(measurement, measurement_noise,
-                                                                                                            gtsam::Symbol('x', frame_idx), gtsam::Symbol('l', landmark_idx),
-                                                                                                            K);
+            std::map<int, int>::iterator observation_itr = pLandmark->observations_.find(pFrame->id_);
+            if (observation_itr != pLandmark->observations_.end()) {
+
+                cv::Point2f measurement_cv = pFrame->keypoints_pt_.at(observation_itr->second);
+                gtsam::Point2 measurement(measurement_cv.x, measurement_cv.y);
+                // add measurement factor
+                graph.emplace_shared<gtsam::GenericProjectionFactor<gtsam::Pose3, gtsam::Point3, gtsam::Cal3_S2>>(measurement, measurement_noise,
+                                                                                                                gtsam::Symbol('x', frame_idx), gtsam::Symbol('l', landmark_idx),
+                                                                                                                K);
+            }
         }
     }
 
@@ -73,9 +77,12 @@ void LocalOptimizer::optimizeFrames(std::vector<std::shared_ptr<Frame>> &frames,
 
     // 3. Optimize
     gtsam::LevenbergMarquardtOptimizer optimizer(graph, initial_estimates);
+
     // start timer [optimization]
     const std::chrono::time_point<std::chrono::steady_clock> optimization_start = std::chrono::steady_clock::now();
+
     gtsam::Values result = optimizer.optimize();
+
     // end timer [optimization]
     const std::chrono::time_point<std::chrono::steady_clock> optimization_end = std::chrono::steady_clock::now();
     auto optimization_diff = optimization_end - optimization_start;
@@ -91,8 +98,10 @@ void LocalOptimizer::optimizeFrames(std::vector<std::shared_ptr<Frame>> &frames,
         std::shared_ptr<Frame> pFrame = frames[frame_idx];
         pFrame->pose_ = result.at<gtsam::Pose3>(gtsam::Symbol('x', frame_idx)).matrix();
 
-        std::shared_ptr<Frame> pPrev_frame = pFrame->pPrevious_frame_.lock();
-        pFrame->relative_pose_ = pPrev_frame->pose_.inverse() * pFrame->pose_;
+        if (pFrame->id_ > 0) {
+            std::shared_ptr<Frame> pPrev_frame = pFrame->pPrevious_frame_.lock();
+            pFrame->relative_pose_ = pPrev_frame->pose_.inverse() * pFrame->pose_;
+        }
 
         // Recover Landmark point
         for (int j = 0; j < pFrame->landmarks_.size(); j++) {
