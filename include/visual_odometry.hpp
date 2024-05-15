@@ -18,9 +18,6 @@
 #include "config.hpp"
 #include "utils.hpp"
 #include "logger.hpp"
-// #include "tester.hpp"
-
-class Tester;
 
 class VisualOdometry {
 public:
@@ -52,7 +49,6 @@ public:
     std::shared_ptr<Visualizer> pVisualizer_;
     std::shared_ptr<Camera> pCamera_;
     LocalOptimizer optimizer_;
-    Tester* pTester_;
 
     cv::Ptr<cv::ORB> orb_;
     cv::Ptr<cv::SIFT> sift_;

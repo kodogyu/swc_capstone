@@ -1,5 +1,4 @@
 #include "visual_odometry.hpp"
-#include "tester.hpp"
 
 VisualOdometry::VisualOdometry(std::string config_path) {
     // parse config file
@@ -10,7 +9,6 @@ VisualOdometry::VisualOdometry(std::string config_path) {
     pUtils_ = std::make_shared<Utils>(pConfig_);
     pVisualizer_ = std::make_shared<Visualizer>(pConfig_, pUtils_);
     pCamera_ = std::make_shared<Camera>(pConfig_);
-    pTester_ = new Tester();
 
     orb_ = cv::ORB::create(pConfig_->num_features_, 1.2, 8, 31, 0, 2, cv::ORB::HARRIS_SCORE, 31, 25);
     orb_matcher_ = cv::DescriptorMatcher::create(cv::DescriptorMatcher::BRUTEFORCE_HAMMING);
@@ -20,7 +18,6 @@ VisualOdometry::VisualOdometry(std::string config_path) {
 }
 
 VisualOdometry::~VisualOdometry() {
-    delete pTester_;
 }
 
 void VisualOdometry::run() {
