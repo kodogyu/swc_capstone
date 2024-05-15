@@ -4,7 +4,7 @@
 # num_frames:
 #   -1: all frames
 #    n: n frames
-num_frames: 5
+num_frames: 3
 frame_offset: 0
 
 # # KITTI-360
@@ -115,7 +115,7 @@ kps_per_patch: 10
 des_dist_thresh: 0.6
 
 #========== Optimization ==========#
-do_optimize: 1
+do_optimize: 0
 window_size: 3
 optimizer_verbose: 1
 

@@ -21,6 +21,8 @@ class Tester {
 public:
     Tester();
 
+    void run(VisualOdometry &vo);
+
     void decomposeEssentialMat(const cv::Mat &essential_mat, cv::Mat intrinsic, std::vector<cv::Point2f> image0_kp_pts, std::vector<cv::Point2f> image1_kp_pts, const cv::Mat &mask, cv::Mat &R, cv::Mat &t);
     int getPositiveLandmarksCount(cv::Mat intrinsic, std::vector<cv::Point2f> img0_kp_pts, std::vector<cv::Point2f> img1_kp_pts, Eigen::Isometry3d &cam1_pose, const cv::Mat &mask);
 
@@ -52,17 +54,16 @@ public:
                                     const std::vector<Eigen::Vector3d> &landmark_points_3d);
 
 
+    std::vector<cv::Point2f> manual_kp_frame0_;
+    std::vector<cv::Point2f> manual_kp_frame1_;
+    std::vector<cv::Point2f> manual_kp_frame2_;
+    std::vector<cv::Point2f> manual_kp_frame3_;
+    std::vector<cv::Point2f> manual_kp_frame4_;
+    std::vector<std::vector<cv::Point2f>> manual_kps_vec_;
 
-    std::vector<cv::Point2f> manual_kp_frame0;
-    std::vector<cv::Point2f> manual_kp_frame1;
-    std::vector<cv::Point2f> manual_kp_frame2;
-    std::vector<cv::Point2f> manual_kp_frame3;
-    std::vector<cv::Point2f> manual_kp_frame4;
-    std::vector<std::vector<cv::Point2f>> manual_kps_vec;
-
-    std::vector<TestMatch> manual_match_0_1;
-    std::vector<TestMatch> manual_match_1_2;
-    std::vector<TestMatch> manual_match_2_3;
-    std::vector<TestMatch> manual_match_3_4;
-    std::vector<std::vector<TestMatch>> manual_matches_vec;
+    std::vector<TestMatch> manual_match_0_1_;
+    std::vector<TestMatch> manual_match_1_2_;
+    std::vector<TestMatch> manual_match_2_3_;
+    std::vector<TestMatch> manual_match_3_4_;
+    std::vector<std::vector<TestMatch>> manual_matches_vec_;
 };

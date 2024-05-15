@@ -1,4 +1,5 @@
 #include "visual_odometry.hpp"
+#include "tester.hpp"
 
 int main(int argc, char** argv) {
     std::cout << CV_VERSION << std::endl;
@@ -8,7 +9,14 @@ int main(int argc, char** argv) {
     }
 
     VisualOdometry vo(argv[1]);
-    vo.run();
+
+    if (vo.pConfig_->test_mode_) {  // test mode
+        Tester tester;
+        tester.run(vo);
+    }
+    else {  // normal mode
+        vo.run();
+    }
 
     return 0;
 }
