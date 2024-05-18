@@ -303,6 +303,18 @@ void Utils::drawGrid(cv::Mat &image) {
                                     cv::Point(image.cols - 250, 60), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
 }
 
+void Utils::drawMatches(const std::shared_ptr<Frame> &pPrev_frame, const std::shared_ptr<Frame> &pCurr_frame, const std::vector<cv::DMatch> &good_matches) {
+    cv::Mat image_matches;
+    cv::drawMatches(pPrev_frame->image_, pPrev_frame->keypoints_,
+                    pCurr_frame->image_, pCurr_frame->keypoints_,
+                    good_matches, image_matches);
+    cv::imwrite("output_logs/inter_frames/frame"
+            + std::to_string(pPrev_frame->frame_image_idx_)
+            + "&"
+            + std::to_string(pCurr_frame->frame_image_idx_)
+            + "_kp_matches(raw).png", image_matches);
+}
+
 void Utils::alignPoses(const std::vector<Eigen::Isometry3d> &gt_poses, const std::vector<Eigen::Isometry3d> &est_poses, std::vector<Eigen::Isometry3d> &aligned_est_poses) {
     double gt_length = 0, est_length = 0;
 

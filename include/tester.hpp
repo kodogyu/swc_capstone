@@ -42,6 +42,8 @@ public:
                                     // const cv::Mat &essential_mask,
                                     const cv::Mat &pose_mask,
                                     const std::vector<Eigen::Vector3d> &triangulated_kps);
+    void drawMatches(const std::shared_ptr<Frame> &pPrev_frame, const std::shared_ptr<Frame> &pCurr_frame, const std::vector<TestMatch> &good_matches);
+
     void reprojectLandmarks(const std::shared_ptr<Frame> &pFrame,
                             const std::vector<TestMatch> &matches,
                             const cv::Mat &mask,

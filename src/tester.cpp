@@ -76,10 +76,24 @@ void Tester::run(VisualOdometry &vo) {
             std::cout << "\n[test mode] Feature extraction" << std::endl;
 
             if (run_iter == 1) {  // first run
-                setFrameKeypoints_pt(pPrev_frame, manual_kp_frame0_);
+                // setFrameKeypoints_pt(pPrev_frame, manual_kp_frame0_);
+
+                // checkerboard points
+                std::vector<cv::Point2f> prev_corners;
+                cv::findChessboardCorners(pPrev_frame->image_, cv::Size(7, 7), prev_corners);
+                pPrev_frame->keypoints_pt_ = prev_corners;
+                setFrameKeypoints_pt(pPrev_frame, prev_corners);
+
                 vo.pUtils_->drawKeypoints(pPrev_frame);
             }
-            setFrameKeypoints_pt(pCurr_frame, manual_kps_vec_[run_iter]);
+            // setFrameKeypoints_pt(pCurr_frame, manual_kps_vec_[run_iter]);
+
+            // checkerboard points
+            std::vector<cv::Point2f> curr_corners;
+            cv::findChessboardCorners(pCurr_frame->image_, cv::Size(7, 7), curr_corners);
+            pCurr_frame->keypoints_pt_ = curr_corners;
+            setFrameKeypoints_pt(pCurr_frame, curr_corners);
+
             vo.pUtils_->drawKeypoints(pCurr_frame);
         }
         //**========== 2. Feature matching ==========**//
@@ -87,7 +101,7 @@ void Tester::run(VisualOdometry &vo) {
         std::chrono::time_point<std::chrono::steady_clock> feature_matching_start = std::chrono::steady_clock::now();
 
         std::vector<TestMatch> good_matches_test;  // for TEST mode
-        std::vector<cv::DMatch> good_matches;  // good matchings
+        // std::vector<cv::DMatch> good_matches;  // good matchings
 
         int raw_matches_size = -1;
         int good_matches_size = -1;
@@ -100,7 +114,12 @@ void Tester::run(VisualOdometry &vo) {
         if (vo.pConfig_->test_mode_) {
             std::cout << "\n[test mode] Feature matching" << std::endl;
 
-            good_matches_test = manual_matches_vec_[run_iter - 1];
+            // good_matches_test = manual_matches_vec_[run_iter - 1];
+
+            // checkerboard matches
+            for (int i = 0; i < 7*7; i++) {
+                good_matches_test.push_back(TestMatch(i, i));
+            }
 
             for (auto match : good_matches_test) {
                 image0_kp_pts.push_back(pPrev_frame->keypoints_pt_[match.queryIdx]);
@@ -113,8 +132,8 @@ void Tester::run(VisualOdometry &vo) {
             raw_matches_size = manual_matches_vec_[run_iter - 1].size();
             good_matches_size = good_matches_test.size();
         }
-        // set frame matches
-        pCurr_frame->setFrameMatches(good_matches);
+        // // set frame matches
+        // pCurr_frame->setFrameMatches(good_matches);
 
         std::cout << "original features for image" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + std::to_string(pCurr_frame->frame_image_idx_) + ": " << raw_matches_size << std::endl;
         std::cout << "good features for image" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + std::to_string(pCurr_frame->frame_image_idx_) + ": " << good_matches_size << std::endl;
@@ -142,6 +161,9 @@ void Tester::run(VisualOdometry &vo) {
         auto feature_matching_diff = feature_matching_end - feature_matching_start;
         auto feature_matching_cost = std::chrono::duration_cast<std::chrono::milliseconds>(feature_matching_diff).count();  // feature matching cost (ms)
         vo.feature_matching_costs_.push_back(feature_matching_cost);
+
+        // draw matches
+        drawMatches(pPrev_frame, pCurr_frame, good_matches_test);
 
         //**========== 3. Motion estimation ==========**//
         // start timer [motion estimation]
@@ -617,6 +639,52 @@ void Tester::drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
                                     cv::Point(0, 60), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
 
     cv::imwrite("output_logs/inter_frames/reprojected_landmarks/frame" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + "frame" + std::to_string(pFrame->frame_image_idx_) + "_proj.png", result_image);
+}
+
+void Tester::drawMatches(const std::shared_ptr<Frame> &pPrev_frame, const std::shared_ptr<Frame> &pCurr_frame, const std::vector<TestMatch> &good_matches) {
+    cv::Mat prev_frame_img, curr_frame_img;
+    cv::cvtColor(pPrev_frame->image_, prev_frame_img, cv::COLOR_GRAY2BGR);
+    cv::cvtColor(pCurr_frame->image_, curr_frame_img, cv::COLOR_GRAY2BGR);
+
+    cv::Mat image_matches;
+    cv::hconcat(prev_frame_img, curr_frame_img, image_matches);
+
+    int image_w = prev_frame_img.cols;
+    int image_h = prev_frame_img.rows;
+
+    for (int i = 0; i < good_matches.size(); i++) {
+        cv::Point2f prev_kp_pt = pPrev_frame->keypoints_pt_[good_matches[i].queryIdx];
+        cv::Point2f curr_kp_pt = pCurr_frame->keypoints_pt_[good_matches[i].trainIdx];
+
+        curr_kp_pt.x += image_w;
+
+        // draw previous frame keypoint
+        cv::rectangle(image_matches,
+                    prev_kp_pt - cv::Point2f(5, 5),
+                    prev_kp_pt + cv::Point2f(5, 5),
+                    cv::Scalar(0, 127, 255));  // orange
+
+        // draw current frame keypoint
+        cv::rectangle(image_matches,
+                    curr_kp_pt - cv::Point2f(5, 5),
+                    curr_kp_pt + cv::Point2f(5, 5),
+                    cv::Scalar(0, 127, 255));  // orange
+
+        // draw prev-current keypoint line
+        cv::line(image_matches,
+                    prev_kp_pt,
+                    curr_kp_pt,
+                    cv::Scalar(0, 255, 0));  // green
+    }
+    cv::putText(image_matches, "frame" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + std::to_string(pCurr_frame->frame_image_idx_),
+                                cv::Point(0, 20), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
+
+    cv::imwrite("output_logs/inter_frames/frame"
+                + std::to_string(pPrev_frame->frame_image_idx_)
+                + "&"
+                + "frame"
+                + std::to_string(pCurr_frame->frame_image_idx_)
+                + "_kp_matches(raw).png", image_matches);
 }
 
 

@@ -172,6 +172,9 @@ void VisualOdometry::run() {
         auto feature_matching_cost = std::chrono::duration_cast<std::chrono::milliseconds>(feature_matching_diff).count();  // feature matching cost (ms)
         feature_matching_costs_.push_back(feature_matching_cost);
 
+        // draw matches
+        pUtils_->drawMatches(pPrev_frame, pCurr_frame, good_matches);
+
         //**========== 3. Motion estimation ==========**//
         // start timer [motion estimation]
         std::chrono::time_point<std::chrono::steady_clock> motion_estimation_start = std::chrono::steady_clock::now();

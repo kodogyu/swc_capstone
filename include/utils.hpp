@@ -31,6 +31,7 @@ public:
     void drawKeypoints(std::shared_ptr<Frame> pFrame,
                     std::string folder,
                     std::string tail);
+    void drawMatches(const std::shared_ptr<Frame> &pPrev_frame, const std::shared_ptr<Frame> &pCurr_frame, const std::vector<cv::DMatch> &good_matches);
 
     void alignPoses(const std::vector<Eigen::Isometry3d> &gt_poses, const std::vector<Eigen::Isometry3d> &est_poses, std::vector<Eigen::Isometry3d> &aligned_est_poses);
     std::vector<Eigen::Isometry3d> calcRPE(const std::vector<std::shared_ptr<Frame>> &frames);
