@@ -4,7 +4,7 @@
 # num_frames:
 #   -1: all frames
 #    n: n frames
-num_frames: 2
+num_frames: 5
 frame_offset: 0
 
 # # KITTI-360
@@ -21,12 +21,18 @@ frame_offset: 0
 # left_images_dir: /home/kodogyu/Datasets/KITTI-360/data_2d_raw/2013_05_28_drive_0000_sync/image_02/data_rgb
 
 
-# KITTI
-is_kitti: 1
-gt_path: /home/kodogyu/Datasets/KITTI/dataset/poses/00.txt
+# # KITTI
+# is_kitti: 1
+# gt_path: /home/kodogyu/Datasets/KITTI/dataset/poses/00.txt
 
 # left_images_dir: /home/kodogyu/Datasets/KITTI/dataset/sequences/00/image_0
+
+
 # left_images_dir: /home/kodogyu/github_repos/sfm/data/nutellar2/
+
+# Gazebo test bed
+is_kitti: 0
+gt_path: /home/kodogyu/Datasets/KITTI/dataset/poses/00.txt
 left_images_dir: /home/kodogyu/swc_capstone/system_test/images
 
 #========== Camera parameters ==========#
