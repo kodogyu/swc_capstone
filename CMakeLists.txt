@@ -5,7 +5,7 @@ set(CMAKE_CXX_FLAGS "-std=c++17")
 set(CMAKE_BUILD_TYPE Debug)
 
 ##=========================DEPENDENCIES=========================##
-find_package(Eigen3 3.3 REQUIRED)   # -DEigen3_DIR=/usr/include/eigen3 (3.3.7), /usr/local/share/eigen3/cmake (3.4)
+find_package(Eigen3 3.3 REQUIRED)   # -DEigen3_DIR=/usr/lib/cmake/eigen3 (3.3.7), /usr/local/share/eigen3/cmake (3.4)
 find_package(GTSAM REQUIRED)    # -DGTSAM_DIR=/usr/local/lib/cmake/GTSAM
 find_package(OpenCV 4 REQUIRED)   # -DOpenCV_DIR=/home/kodogyu/opencv/build
 find_package(Sophus REQUIRED)
