@@ -39,7 +39,7 @@ void LocalOptimizer::optimizeFrames(std::vector<std::shared_ptr<Frame>> &frames,
             if (landmark_map_itr == landmark_id_idx_map.end()) {  // new landmark
                 landmark_idx = landmarks_cnt;
 
-                initial_estimates.insert<gtsam::Point3>(gtsam::Symbol('l', landmark_idx), gtsam::Point3(pLandmark->point_3d_));
+                initial_estimates.insert(gtsam::Symbol('l', landmark_idx), gtsam::Point3(pLandmark->point_3d_));
                 landmark_idx_id_map.push_back(pLandmark->id_);
                 landmark_id_idx_map[pLandmark->id_] = landmark_idx;
 
@@ -68,12 +68,15 @@ void LocalOptimizer::optimizeFrames(std::vector<std::shared_ptr<Frame>> &frames,
     // gtsam::Pose3 second_pose = gtsam::Pose3(gtsam::Rot3(frames[1]->pose_.rotation()), gtsam::Point3(frames[1]->pose_.translation()));
     // add a prior on the first pose
     const auto pose_noise = gtsam::noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << gtsam::Vector3::Constant(0.3), gtsam::Vector3::Constant(0.1)).finished());  // std of 0.3m for x,y,z, 0.1rad for r,p,y
-    graph.addPrior(gtsam::Symbol('x', 0), first_pose, pose_noise);
+    // graph.addPrior(gtsam::Symbol('x', 0), first_pose, pose_noise);
+    graph.push_back(gtsam::PriorFactor<gtsam::Pose3>(gtsam::Symbol('x', 0), first_pose, pose_noise));
+
     // // add a prior on the second pose (for scale)
     // graph.addPrior(gtsam::Symbol('x', 1), second_pose, pose_noise);
     // add a prior on the first landmark (for scale)
     auto point_noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.1);
-    graph.addPrior(gtsam::Symbol('l', 0), frames[0]->landmarks_[0]->point_3d_, point_noise);
+    // graph.addPrior(gtsam::Symbol('l', 0), frames[0]->landmarks_[0]->point_3d_, point_noise);
+    graph.push_back(gtsam::PriorFactor<gtsam::Point3>(gtsam::Symbol('l', 0), frames[0]->landmarks_[0]->point_3d_, point_noise));
 
     // 3. Optimize
     gtsam::LevenbergMarquardtOptimizer optimizer(graph, initial_estimates);

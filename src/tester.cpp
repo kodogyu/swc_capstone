@@ -72,27 +72,35 @@ void Tester::run(VisualOdometry &vo) {
 
         //**========== 1. Feature extraction ==========**//
         //* TEST mode
+        int checkerboard_size[] = {5, 7};
+
         if (vo.pConfig_->test_mode_) {
             std::cout << "\n[test mode] Feature extraction" << std::endl;
 
-            if (run_iter == 1) {  // first run
-                // setFrameKeypoints_pt(pPrev_frame, manual_kp_frame0_);
+            cv::TermCriteria criteria = cv::TermCriteria( cv::TermCriteria::EPS + cv::TermCriteria::COUNT, 40, 0.001 );
 
-                // checkerboard points
-                std::vector<cv::Point2f> prev_corners;
-                cv::findChessboardCorners(pPrev_frame->image_, cv::Size(7, 7), prev_corners);
-                pPrev_frame->keypoints_pt_ = prev_corners;
-                setFrameKeypoints_pt(pPrev_frame, prev_corners);
+            if (run_iter == 1) {  // first run
+                // handmade features
+                setFrameKeypoints_pt(pPrev_frame, manual_kp_frame0_);
+
+                // // checkerboard points
+                // std::vector<cv::Point2f> prev_corners;
+                // cv::findChessboardCorners(pPrev_frame->image_, cv::Size(checkerboard_size[0], checkerboard_size[1]), prev_corners);
+                // cv::cornerSubPix(pPrev_frame->image_, prev_corners, cv::Size(11, 11), cv::Size(-1,-1), criteria);
+                // pPrev_frame->keypoints_pt_ = prev_corners;
+                // setFrameKeypoints_pt(pPrev_frame, prev_corners);
 
                 vo.pUtils_->drawKeypoints(pPrev_frame);
             }
-            // setFrameKeypoints_pt(pCurr_frame, manual_kps_vec_[run_iter]);
+            // handmade features
+            setFrameKeypoints_pt(pCurr_frame, manual_kps_vec_[run_iter]);
 
-            // checkerboard points
-            std::vector<cv::Point2f> curr_corners;
-            cv::findChessboardCorners(pCurr_frame->image_, cv::Size(7, 7), curr_corners);
-            pCurr_frame->keypoints_pt_ = curr_corners;
-            setFrameKeypoints_pt(pCurr_frame, curr_corners);
+            // // checkerboard points
+            // std::vector<cv::Point2f> curr_corners;
+            // cv::findChessboardCorners(pCurr_frame->image_, cv::Size(checkerboard_size[0], checkerboard_size[1]), curr_corners);
+            // cv::cornerSubPix(pCurr_frame->image_, curr_corners, cv::Size(11, 11), cv::Size(-1,-1), criteria);
+            // pCurr_frame->keypoints_pt_ = curr_corners;
+            // setFrameKeypoints_pt(pCurr_frame, curr_corners);
 
             vo.pUtils_->drawKeypoints(pCurr_frame);
         }
@@ -114,12 +122,13 @@ void Tester::run(VisualOdometry &vo) {
         if (vo.pConfig_->test_mode_) {
             std::cout << "\n[test mode] Feature matching" << std::endl;
 
-            // good_matches_test = manual_matches_vec_[run_iter - 1];
+            // handmade feature matches
+            good_matches_test = manual_matches_vec_[run_iter - 1];
 
-            // checkerboard matches
-            for (int i = 0; i < 7*7; i++) {
-                good_matches_test.push_back(TestMatch(i, i));
-            }
+            // // checkerboard matches
+            // for (int i = 0; i < checkerboard_size[0]*checkerboard_size[1]; i++) {
+            //     good_matches_test.push_back(TestMatch(i, i));
+            // }
 
             for (auto match : good_matches_test) {
                 image0_kp_pts.push_back(pPrev_frame->keypoints_pt_[match.queryIdx]);
@@ -176,10 +185,12 @@ void Tester::run(VisualOdometry &vo) {
         if (vo.pConfig_->test_mode_) {
             std::cout << "\n[test mode] Motion estimation" << std::endl;
             vo.pUtils_->recoverPose(vo.pCamera_->intrinsic_, essential_mat, image0_kp_pts, image1_kp_pts, relative_pose, pose_mask);
-            // relative_pose = pUtils_->getGT(pPrev_frame->frame_image_idx_).inverse() * pUtils_->getGT(pCurr_frame->frame_image_idx_);
-            // if (run_iter == 2) {
-            //     // relative_pose.translation() *= 2;
-            // }
+
+            // relative_pose = vo.pUtils_->getGT(pPrev_frame->frame_image_idx_).inverse() * vo.pUtils_->getGT(pCurr_frame->frame_image_idx_);
+
+            if (run_iter == 2) {
+                relative_pose.translation() *= 2;
+            }
         }
         std::cout << "relative pose:\n" << relative_pose.matrix() << std::endl;
 
@@ -909,6 +920,83 @@ void VisualOdometry::triangulate3(cv::Mat camera_Matrix,
     }
 }*/
 
+
+double Tester::estimateScale(VisualOdometry &vo,const std::shared_ptr<Frame> &pPrev_frame, const std::shared_ptr<Frame> &pCurr_frame, std::vector<int> &scale_mask) {
+    std::cout << "----- Tester::estimateScale -----" << std::endl;
+    double scale_ratio = 1.0;
+
+    std::vector<int> prev_frame_covisible_feature_idxs, curr_frame_covisible_feature_idxs;
+
+    if (pPrev_frame->id_ == 0) {
+        return 1.0;
+    }
+
+    std::shared_ptr<Frame> pBefore_prev_frame = pPrev_frame->pPrevious_frame_.lock();
+    for (auto pLandmark : pPrev_frame->landmarks_) {
+
+        std::cout << "landmark [" << pLandmark->id_ << "] observations: " << std::endl;
+        for (auto observation : pLandmark->observations_) {
+            std::cout << "  (" << observation.first << ") " << observation.second << std::endl;
+        }
+
+        if (pLandmark->observations_.find(pCurr_frame->id_) != pLandmark->observations_.end()  // 현재 프레임에서 관측되는 landmark 이면서
+            && pLandmark->observations_.find(pPrev_frame->id_) != pLandmark->observations_.end()  // 이전 프레임에서 관측되는 landmark 이면서
+            && pLandmark->observations_.find(pBefore_prev_frame->id_) != pLandmark->observations_.end()) {  // 전전 프레임에서 관측되는 landmark
+            int curr_frame_feature_idx = pLandmark->observations_.find(pCurr_frame->id_)->second;
+            
+            prev_frame_covisible_feature_idxs.push_back(pLandmark->observations_.find(pPrev_frame->id_)->second);
+            curr_frame_covisible_feature_idxs.push_back(pLandmark->observations_.find(pCurr_frame->id_)->second);
+
+            scale_mask[curr_frame_feature_idx] = 1;
+        }
+    }
+
+
+    //**========== 2. Feature matching ==========**//
+    std::vector<cv::DMatch> good_matches;  // good matchings
+
+    int raw_matches_size = -1;
+    int good_matches_size = -1;
+
+    // extract points from keypoints
+    std::vector<cv::Point2f> image0_kp_pts;
+    std::vector<cv::Point2f> image1_kp_pts;
+
+    // image0 & image1 (matcher matching)
+    std::vector<std::vector<cv::DMatch>> image_matches01_vec;
+    std::vector<std::vector<cv::DMatch>> image_matches10_vec;
+    vo.knnMatch(pBefore_prev_frame->descriptors_, pCurr_frame->descriptors_, image_matches01_vec, 2);  // prev -> curr matches
+    vo.knnMatch(pCurr_frame->descriptors_, pPrev_frame->descriptors_, image_matches10_vec, 2);  // curr -> prev matches
+
+    raw_matches_size = image_matches01_vec.size();
+
+    // Mark II
+    for (int i = 0; i < image_matches01_vec.size(); i++) {
+        if (image_matches01_vec[i][0].distance < image_matches01_vec[i][1].distance * vo.pConfig_->des_dist_thresh_) {  // prev -> curr match에서 좋은가?
+            int image1_keypoint_idx = image_matches01_vec[i][0].trainIdx;
+            if (image_matches10_vec[image1_keypoint_idx][0].distance < image_matches10_vec[image1_keypoint_idx][1].distance * vo.pConfig_->des_dist_thresh_) {  // curr -> prev match에서 좋은가?
+                if (image_matches01_vec[i][0].queryIdx == image_matches10_vec[image1_keypoint_idx][0].trainIdx)
+                    good_matches.push_back(image_matches01_vec[i][0]);
+            }
+        }
+    }
+
+    good_matches_size = good_matches.size();
+
+
+    if (prev_frame_covisible_feature_idxs.size() < 2) {
+        std::cout << "Number of covisible landmarks should be greater than or equal to 2. Currently " << prev_frame_covisible_feature_idxs.size() << "." << std::endl;
+        return 1.0;
+    }
+
+    double prev_frame_landmark_distance = vo.calcCovisibleLandmarkDistance(pPrev_frame, prev_frame_covisible_feature_idxs);
+    double curr_frame_landmark_distance = vo.calcCovisibleLandmarkDistance(pCurr_frame, curr_frame_covisible_feature_idxs);
+
+    // scale_ratio = curr_frame_landmark_distance / prev_frame_landmark_distance;
+    scale_ratio = prev_frame_landmark_distance / curr_frame_landmark_distance;
+
+    return scale_ratio;
+}
 
 
 

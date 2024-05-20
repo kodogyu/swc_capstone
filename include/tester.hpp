@@ -55,6 +55,7 @@ public:
                                     const cv::Mat &mask,
                                     const std::vector<Eigen::Vector3d> &landmark_points_3d);
 
+    double estimateScale(VisualOdometry &vo, const std::shared_ptr<Frame> &pPrev_frame, const std::shared_ptr<Frame> &pCurr_frame, std::vector<int> &scale_mask);
 
     std::vector<cv::Point2f> manual_kp_frame0_;
     std::vector<cv::Point2f> manual_kp_frame1_;

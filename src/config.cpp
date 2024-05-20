@@ -73,7 +73,9 @@ void Configuration::getImageEntries() {
     while (left_images_itr != std::filesystem::end(left_images_itr)) {
         const std::filesystem::directory_entry left_image_entry = *left_images_itr;
 
-        left_image_entries_temp.push_back(left_image_entry.path());
+        if (!left_image_entry.is_directory()) {
+            left_image_entries_temp.push_back(left_image_entry.path());
+        }
 
         left_images_itr++;
         frame_cnt++;
