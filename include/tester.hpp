@@ -3,6 +3,7 @@
 #include "common_includes.hpp"
 #include "frame.hpp"
 // #include "visual_odometry.hpp"
+#include "timer.hpp"
 
 class TestMatch {
 public:

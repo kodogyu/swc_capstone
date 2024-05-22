@@ -88,7 +88,7 @@ void Logger::logTimecosts(std::vector<int64_t> feature_extraction_costs,
                         std::vector<int64_t> optimization_costs,
                         std::vector<int64_t> total_time_costs) const {
     std::ofstream cost_file(cost_file_path_);
-    cost_file << "feature extraction(ms),feature matching(ms),motion estimation(us),triangulation(ms),scaling(us),optimization(ms),total time(ms)\n";
+    cost_file << "feature extraction(ms),feature matching(ms),motion estimation(ms),triangulation(ms),scaling(ms),optimization(ms),total time(ms)\n";
     for (int i = 0; i < feature_extraction_costs.size(); i++) {
         cost_file << feature_extraction_costs[i] << "," << feature_matching_costs[i] << "," << motion_estimation_costs[i] << ","
                     << triangulation_costs[i] << "," << scaling_costs[i] << "," << optimization_costs[i] << "," << total_time_costs[i] << "\n";

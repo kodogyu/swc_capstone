@@ -16,6 +16,10 @@ message(STATUS "eigen path: ${Eigen3_DIR}")
 message(STATUS "gtsam version: ${GTSAM_VERSION}")
 message(STATUS "gtsam path: ${GTSAM_DIR}")
 message(STATUS "opencv version: ${OpenCV_VERSION}")
+message(STATUS "opencv path: ${OpenCV_DIR}")
+message(STATUS "opencv include path: ${OpenCV_INCLUDE_DIRS}")
+message(STATUS "pangolin path: ${Pangolin_DIR}")
+message(STATUS "pangolin include path: ${Pangolin_INCLUDE_DIRS}")
 
 include_directories(
     ${EIGEN3_INCLUDE_DIRS}
@@ -35,6 +39,7 @@ add_executable(visual_odometry
     src/optimizer.cpp
     src/ransac.cpp
     src/tester.cpp
+    src/timer.cpp
     src/utils.cpp
     src/visual_odometry.cpp
     src/visualizer.cpp)

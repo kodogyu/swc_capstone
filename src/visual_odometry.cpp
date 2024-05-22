@@ -53,7 +53,8 @@ void VisualOdometry::run() {
 
         //**========== 1. Feature extraction ==========**//
         // start timer [feature extraction]
-        std::chrono::time_point<std::chrono::steady_clock> feature_extraction_start = std::chrono::steady_clock::now();
+        Timer feature_timer;
+        feature_timer.start();
 
         cv::Mat curr_image_descriptors;
         std::vector<cv::KeyPoint> curr_image_keypoints;
@@ -83,14 +84,13 @@ void VisualOdometry::run() {
         }
 
         // end timer [feature extraction]
-        std::chrono::time_point<std::chrono::steady_clock> feature_extraction_end = std::chrono::steady_clock::now();
-        auto feature_extraction_diff = feature_extraction_end - feature_extraction_start;
-        auto feature_extraction_cost = std::chrono::duration_cast<std::chrono::milliseconds>(feature_extraction_diff).count();  // feature extraction cost (ms)
-        feature_extraction_costs_.push_back(feature_extraction_cost);
+        feature_extraction_costs_.push_back(feature_timer.stop());
 
         //**========== 2. Feature matching ==========**//
         // start timer [feature matching]
-        std::chrono::time_point<std::chrono::steady_clock> feature_matching_start = std::chrono::steady_clock::now();
+        Timer feature_matching_timer;
+        feature_matching_timer.start();
+
 
         std::vector<cv::DMatch> good_matches;  // good matchings
 
@@ -167,17 +167,15 @@ void VisualOdometry::run() {
         std::cout << "essential inliers / matches: " << essential_inliers << " / " << good_matches_size << std::endl;
 
         // end timer [feature matching]
-        std::chrono::time_point<std::chrono::steady_clock> feature_matching_end = std::chrono::steady_clock::now();
-        auto feature_matching_diff = feature_matching_end - feature_matching_start;
-        auto feature_matching_cost = std::chrono::duration_cast<std::chrono::milliseconds>(feature_matching_diff).count();  // feature matching cost (ms)
-        feature_matching_costs_.push_back(feature_matching_cost);
+        feature_matching_costs_.push_back(feature_matching_timer.stop());
 
         // draw matches
         pUtils_->drawMatches(pPrev_frame, pCurr_frame, good_matches);
 
         //**========== 3. Motion estimation ==========**//
         // start timer [motion estimation]
-        std::chrono::time_point<std::chrono::steady_clock> motion_estimation_start = std::chrono::steady_clock::now();
+        Timer motion_estimation_timer;
+        motion_estimation_timer.start();
 
         Eigen::Isometry3d relative_pose;
         cv::Mat pose_mask = essential_mask.clone();
@@ -194,23 +192,18 @@ void VisualOdometry::run() {
 
 
         // end timer [motion estimation]
-        std::chrono::time_point<std::chrono::steady_clock> motion_estimation_end = std::chrono::steady_clock::now();
-        auto motion_estimation_diff = motion_estimation_end - motion_estimation_start;
-        auto motion_estimation_cost = std::chrono::duration_cast<std::chrono::microseconds>(motion_estimation_diff).count();  // motion estimation cost (ms)
-        motion_estimation_costs_.push_back(motion_estimation_cost);
+        motion_estimation_costs_.push_back(motion_estimation_timer.stop());
 
         //**========== 4. Triangulation ==========**//
         // start timer [triangulation]
-        std::chrono::time_point<std::chrono::steady_clock> triangulation_start = std::chrono::steady_clock::now();
+        Timer triangulation_timer;
+        triangulation_timer.start();
 
         std::vector<Eigen::Vector3d> keypoints_3d;
         triangulate3(pCamera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, pose_mask, keypoints_3d);
 
         // end timer [triangulation]
-        std::chrono::time_point<std::chrono::steady_clock> triangulation_end = std::chrono::steady_clock::now();
-        auto triangulation_diff = triangulation_end - triangulation_start;
-        auto triangulation_cost = std::chrono::duration_cast<std::chrono::milliseconds>(triangulation_diff).count();  // triangulation cost (ms)
-        triangulation_costs_.push_back(triangulation_cost);
+        triangulation_costs_.push_back(triangulation_timer.stop());
 
         // ----- Calculate & Draw reprojection error
         std::vector<Eigen::Vector3d> triangulated_kps, triangulated_kps_cv;
@@ -224,7 +217,8 @@ void VisualOdometry::run() {
 
         //**========== 5. Scale estimation ==========**//
         // start timer [scaling]
-        std::chrono::time_point<std::chrono::steady_clock> scaling_start = std::chrono::steady_clock::now();
+        Timer scaling_timer;
+        scaling_timer.start();
 
         std::vector<int> scale_mask(pCurr_frame->keypoints_pt_.size(), 0);
         // double est_scale_ratio = estimateScale(pPrev_frame, pCurr_frame, scale_mask);
@@ -237,14 +231,13 @@ void VisualOdometry::run() {
         // applyScale(pCurr_frame, est_scale_ratio, scale_mask);
 
         // end timer [scaling]
-        std::chrono::time_point<std::chrono::steady_clock> scaling_end = std::chrono::steady_clock::now();
-        auto scaling_diff = scaling_end - scaling_start;
-        auto scaling_cost = std::chrono::duration_cast<std::chrono::microseconds>(scaling_diff).count();  // scaling time cost (ms)
-        scaling_costs_.push_back(scaling_cost);
+        scaling_costs_.push_back(scaling_timer.stop());
 
         //**========== 6. Local optimization ==========**//
         // start timer [optimization]
-        const std::chrono::time_point<std::chrono::steady_clock> optimization_start = std::chrono::steady_clock::now();
+        Timer optimization_timer;
+        optimization_timer.start();
+
         if (pConfig_->do_optimize_) {
             frame_window_.push_back(pCurr_frame);
 
@@ -279,10 +272,7 @@ void VisualOdometry::run() {
         pPrev_frame = pCurr_frame;
 
         // end timer [total time]
-        std::chrono::time_point<std::chrono::steady_clock> total_time_end = std::chrono::steady_clock::now();
-        auto total_time_diff = total_time_end - total_time_start;
-        auto total_time_cost = std::chrono::duration_cast<std::chrono::milliseconds>(total_time_diff).count();  // total time cost (ms)
-        total_time_costs_.push_back(total_time_cost);
+        optimization_costs_.push_back(optimization_timer.stop());
 
         // logger_.logTrajectoryTxtAppend(pCurr_frame->pose_);
         // logger_.logTimecostAppend(feature_extraction_cost,

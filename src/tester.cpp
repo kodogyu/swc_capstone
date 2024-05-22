@@ -75,6 +75,9 @@ void Tester::run(VisualOdometry &vo) {
         //**========== 1. Feature extraction ==========**//
         std::cout << "\n1. Feature extraction" << std::endl;
 
+        Timer feature_timer;
+        feature_timer.start();
+
         //* TEST mode
         cv::Size checkerboard_size = cv::Size(6, 8);
         std::vector<cv::Size> checkerboard_sizes = {cv::Size(13, 9), cv::Size(10, 7), cv::Size(8, 6), cv::Size(7, 4), cv::Size(5, 3)};
@@ -120,11 +123,14 @@ void Tester::run(VisualOdometry &vo) {
             vo.pUtils_->drawKeypoints(pCurr_frame);
         }
 
+        vo.feature_extraction_costs_.push_back(feature_timer.stop());
+
         //**========== 2. Feature matching ==========**//
         std::cout << "\n2. Feature matching" << std::endl;
 
         // start timer [feature matching]
-        std::chrono::time_point<std::chrono::steady_clock> feature_matching_start = std::chrono::steady_clock::now();
+        Timer feature_matching_timer;
+        feature_matching_timer.start();
 
         std::vector<TestMatch> good_matches_test;  // for TEST mode
         // std::vector<cv::DMatch> good_matches;  // good matchings
@@ -201,10 +207,7 @@ void Tester::run(VisualOdometry &vo) {
         std::cout << "essential inliers / matches: " << essential_inliers << " / " << good_matches_size << std::endl;
 
         // end timer [feature matching]
-        std::chrono::time_point<std::chrono::steady_clock> feature_matching_end = std::chrono::steady_clock::now();
-        auto feature_matching_diff = feature_matching_end - feature_matching_start;
-        auto feature_matching_cost = std::chrono::duration_cast<std::chrono::milliseconds>(feature_matching_diff).count();  // feature matching cost (ms)
-        vo.feature_matching_costs_.push_back(feature_matching_cost);
+        vo.feature_matching_costs_.push_back(feature_matching_timer.stop());
 
         // draw matches
         drawMatches(pPrev_frame, pCurr_frame, good_matches_test);
@@ -213,7 +216,8 @@ void Tester::run(VisualOdometry &vo) {
         std::cout << "\n3. Motion estimation" << std::endl;
 
         // start timer [motion estimation]
-        std::chrono::time_point<std::chrono::steady_clock> motion_estimation_start = std::chrono::steady_clock::now();
+        Timer motion_estimation_timer;
+        motion_estimation_timer.start();
 
         Eigen::Isometry3d relative_pose;
         cv::Mat pose_mask = essential_mask.clone();
@@ -252,16 +256,15 @@ void Tester::run(VisualOdometry &vo) {
 
 
         // end timer [motion estimation]
-        std::chrono::time_point<std::chrono::steady_clock> motion_estimation_end = std::chrono::steady_clock::now();
-        auto motion_estimation_diff = motion_estimation_end - motion_estimation_start;
-        auto motion_estimation_cost = std::chrono::duration_cast<std::chrono::microseconds>(motion_estimation_diff).count();  // motion estimation cost (ms)
-        vo.motion_estimation_costs_.push_back(motion_estimation_cost);
+        vo.motion_estimation_costs_.push_back(motion_estimation_timer.stop());
 
         //**========== 4. Triangulation ==========**//
         std::cout << "\n4. Triangulation" << std::endl;
 
         // start timer [triangulation]
-        std::chrono::time_point<std::chrono::steady_clock> triangulation_start = std::chrono::steady_clock::now();
+        Timer triangulation_timer;
+        triangulation_timer.start();
+
 
         std::vector<Eigen::Vector3d> keypoints_3d;
 
@@ -274,10 +277,7 @@ void Tester::run(VisualOdometry &vo) {
         }
 
         // end timer [triangulation]
-        std::chrono::time_point<std::chrono::steady_clock> triangulation_end = std::chrono::steady_clock::now();
-        auto triangulation_diff = triangulation_end - triangulation_start;
-        auto triangulation_cost = std::chrono::duration_cast<std::chrono::milliseconds>(triangulation_diff).count();  // triangulation cost (ms)
-        vo.triangulation_costs_.push_back(triangulation_cost);
+        vo.triangulation_costs_.push_back(triangulation_timer.stop());
 
         // ----- Calculate & Draw reprojection error
         std::vector<Eigen::Vector3d> triangulated_kps, triangulated_kps_cv;
@@ -295,7 +295,8 @@ void Tester::run(VisualOdometry &vo) {
         //**========== 5. Scale estimation ==========**//
         std::cout << "\n5. Scale estimation" << std::endl;
         // start timer [scaling]
-        std::chrono::time_point<std::chrono::steady_clock> scaling_start = std::chrono::steady_clock::now();
+        Timer scaling_timer;
+        scaling_timer.start();
 
         // std::vector<int> scale_mask(pCurr_frame->keypoints_pt_.size(), 0);
         // double est_scale_ratio = estimateScale(vo, pPrev_frame, pCurr_frame, scale_mask);
@@ -307,10 +308,7 @@ void Tester::run(VisualOdometry &vo) {
         // applyScale(pCurr_frame, est_scale_ratio, scale_mask);
 
         // end timer [scaling]
-        std::chrono::time_point<std::chrono::steady_clock> scaling_end = std::chrono::steady_clock::now();
-        auto scaling_diff = scaling_end - scaling_start;
-        auto scaling_cost = std::chrono::duration_cast<std::chrono::microseconds>(scaling_diff).count();  // scaling time cost (ms)
-        vo.scaling_costs_.push_back(scaling_cost);
+        vo.scaling_costs_.push_back(scaling_timer.stop());
 
         // cv::Mat keypoints_3d_mat = cv::Mat(3, pPrev_frame->keypoints_3d_.size(), CV_64F);
         // for (int i = 0; i < keypoints_3d.size(); i++) {
@@ -324,7 +322,10 @@ void Tester::run(VisualOdometry &vo) {
         std::cout << "\n6. Local optimization" << std::endl;
 
         // start timer [optimization]
-        const std::chrono::time_point<std::chrono::steady_clock> optimization_start = std::chrono::steady_clock::now();
+        Timer optimization_timer;
+        optimization_timer.start();
+
+
         if (vo.pConfig_->do_optimize_) {
             vo.frame_window_.push_back(pCurr_frame);
 
@@ -341,10 +342,7 @@ void Tester::run(VisualOdometry &vo) {
             }
         }
         // end timer [optimization]
-        const std::chrono::time_point<std::chrono::steady_clock> optimization_end = std::chrono::steady_clock::now();
-        auto optimization_diff = optimization_end - optimization_start;
-        auto optimization_cost = std::chrono::duration_cast<std::chrono::milliseconds>(optimization_diff).count();
-        vo.optimization_costs_.push_back(optimization_cost);
+        vo.optimization_costs_.push_back(optimization_timer.stop());
 
         // update visualizer buffer
         if (vo.pConfig_->do_optimize_) {

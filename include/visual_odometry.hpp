@@ -18,6 +18,7 @@
 #include "config.hpp"
 #include "utils.hpp"
 #include "logger.hpp"
+#include "timer.hpp"
 
 class VisualOdometry {
 public:
