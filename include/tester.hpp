@@ -27,6 +27,7 @@ public:
     int getPositiveLandmarksCount(cv::Mat intrinsic, std::vector<cv::Point2f> img0_kp_pts, std::vector<cv::Point2f> img1_kp_pts, Eigen::Isometry3d &cam1_pose, const cv::Mat &mask);
 
     void setFrameKeypoints_pt(const std::shared_ptr<Frame> &pFrame, std::vector<cv::Point2f> kp_pts);
+    void setFrameKeypoints_pt(const std::shared_ptr<Frame> &pFrame, std::vector<std::vector<cv::Point2f>> kp_pts_vec);
     void setFrameMatches(const std::shared_ptr<Frame> &pFrame, const std::vector<TestMatch> &matches_with_prev_frame);
 
     void triangulate3(const VisualOdometry &visual_odometry,
@@ -56,6 +57,9 @@ public:
                                     const std::vector<Eigen::Vector3d> &landmark_points_3d);
 
     double estimateScale(VisualOdometry &vo, const std::shared_ptr<Frame> &pPrev_frame, const std::shared_ptr<Frame> &pCurr_frame, std::vector<int> &scale_mask);
+
+    std::vector<cv::Point2f> findMultipleCheckerboards(const cv::Mat &image, const cv::Size &patternSize, int nCheckerboards);
+    std::vector<std::vector<cv::Point2f>> findMultipleCheckerboards(const cv::Mat &image, const std::vector<cv::Size> &patternSizes, int nCheckerboardsEach);
 
     std::vector<cv::Point2f> manual_kp_frame0_;
     std::vector<cv::Point2f> manual_kp_frame1_;

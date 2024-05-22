@@ -45,14 +45,15 @@ void Tester::run(VisualOdometry &vo) {
     // read images
     cv::Mat image0_left, image1_left;
 
+    std::cout << "frame [0] image: " << vo.pConfig_->left_image_entries_[0] << std::endl;
     image0_left = cv::imread(vo.pConfig_->left_image_entries_[0], cv::IMREAD_GRAYSCALE);
-    // image0_left = readImage(0);
 
-    vo.poses_.push_back(Eigen::Isometry3d::Identity());
     std::shared_ptr<Frame> pPrev_frame = std::make_shared<Frame>();
     pPrev_frame->image_ = image0_left;
     pPrev_frame->frame_image_idx_ = vo.pConfig_->frame_offset_;
     pPrev_frame->pCamera_ = vo.pCamera_;
+    pPrev_frame->pose_ = Eigen::Isometry3d::Identity();
+    vo.poses_.push_back(pPrev_frame->pose_);
     vo.frames_.push_back(pPrev_frame);
     vo.frame_window_.push_back(pPrev_frame);
 
@@ -60,8 +61,9 @@ void Tester::run(VisualOdometry &vo) {
         // start timer [total time cost]
         std::chrono::time_point<std::chrono::steady_clock> total_time_start = std::chrono::steady_clock::now();
 
+        std::cout << "frame [" << run_iter << "] image: " << vo.pConfig_->left_image_entries_[run_iter] << std::endl;
         image1_left = cv::imread(vo.pConfig_->left_image_entries_[run_iter], cv::IMREAD_GRAYSCALE);
-        // image1_left = readImage(i);
+
         // new Frame!
         std::shared_ptr<Frame> pCurr_frame = std::make_shared<Frame>();
         pCurr_frame->image_ = image1_left;
@@ -71,8 +73,11 @@ void Tester::run(VisualOdometry &vo) {
         pPrev_frame->pNext_frame_ = pCurr_frame;
 
         //**========== 1. Feature extraction ==========**//
+        std::cout << "\n1. Feature extraction" << std::endl;
+
         //* TEST mode
-        int checkerboard_size[] = {5, 7};
+        cv::Size checkerboard_size = cv::Size(6, 8);
+        std::vector<cv::Size> checkerboard_sizes = {cv::Size(13, 9), cv::Size(10, 7), cv::Size(8, 6), cv::Size(7, 4), cv::Size(5, 3)};
 
         if (vo.pConfig_->test_mode_) {
             std::cout << "\n[test mode] Feature extraction" << std::endl;
@@ -80,31 +85,44 @@ void Tester::run(VisualOdometry &vo) {
             cv::TermCriteria criteria = cv::TermCriteria( cv::TermCriteria::EPS + cv::TermCriteria::COUNT, 40, 0.001 );
 
             if (run_iter == 1) {  // first run
-                // handmade features
-                setFrameKeypoints_pt(pPrev_frame, manual_kp_frame0_);
+                // // --- handmade features
+                // setFrameKeypoints_pt(pPrev_frame, manual_kp_frame0_);
 
-                // // checkerboard points
+                // // --- checkerboard points
                 // std::vector<cv::Point2f> prev_corners;
-                // cv::findChessboardCorners(pPrev_frame->image_, cv::Size(checkerboard_size[0], checkerboard_size[1]), prev_corners);
+                // cv::findChessboardCorners(pPrev_frame->image_, checkerboard_size, prev_corners);
                 // cv::cornerSubPix(pPrev_frame->image_, prev_corners, cv::Size(11, 11), cv::Size(-1,-1), criteria);
                 // pPrev_frame->keypoints_pt_ = prev_corners;
                 // setFrameKeypoints_pt(pPrev_frame, prev_corners);
 
+                // --- multiple checkerboard points
+                std::vector<std::vector<cv::Point2f>> prev_corners_vec;
+                prev_corners_vec = findMultipleCheckerboards(pPrev_frame->image_, checkerboard_sizes, 1);
+                setFrameKeypoints_pt(pPrev_frame, prev_corners_vec);
+
                 vo.pUtils_->drawKeypoints(pPrev_frame);
             }
-            // handmade features
-            setFrameKeypoints_pt(pCurr_frame, manual_kps_vec_[run_iter]);
+            // // --- handmade features
+            // setFrameKeypoints_pt(pCurr_frame, manual_kps_vec_[run_iter]);
 
-            // // checkerboard points
+            // // --- checkerboard points
             // std::vector<cv::Point2f> curr_corners;
-            // cv::findChessboardCorners(pCurr_frame->image_, cv::Size(checkerboard_size[0], checkerboard_size[1]), curr_corners);
+            // cv::findChessboardCorners(pCurr_frame->image_, checkerboard_size, curr_corners);
             // cv::cornerSubPix(pCurr_frame->image_, curr_corners, cv::Size(11, 11), cv::Size(-1,-1), criteria);
             // pCurr_frame->keypoints_pt_ = curr_corners;
             // setFrameKeypoints_pt(pCurr_frame, curr_corners);
 
+            // --- multiple checkerboard points
+            std::vector<std::vector<cv::Point2f>> curr_corners_vec;
+            curr_corners_vec = findMultipleCheckerboards(pCurr_frame->image_, checkerboard_sizes, 1);
+            setFrameKeypoints_pt(pCurr_frame, curr_corners_vec);
+
             vo.pUtils_->drawKeypoints(pCurr_frame);
         }
+
         //**========== 2. Feature matching ==========**//
+        std::cout << "\n2. Feature matching" << std::endl;
+
         // start timer [feature matching]
         std::chrono::time_point<std::chrono::steady_clock> feature_matching_start = std::chrono::steady_clock::now();
 
@@ -122,13 +140,33 @@ void Tester::run(VisualOdometry &vo) {
         if (vo.pConfig_->test_mode_) {
             std::cout << "\n[test mode] Feature matching" << std::endl;
 
-            // handmade feature matches
-            good_matches_test = manual_matches_vec_[run_iter - 1];
+            // // handmade feature matches
+            // good_matches_test = manual_matches_vec_[run_iter - 1];
+            // raw_matches_size = manual_matches_vec_[run_iter - 1].size();
 
-            // // checkerboard matches
-            // for (int i = 0; i < checkerboard_size[0]*checkerboard_size[1]; i++) {
+            // // single checkerboard matches
+            // std::cout << "checkerboard corners " << std::endl;
+            // for (int i = 0; i < checkerboard_size.area(); i++) {
             //     good_matches_test.push_back(TestMatch(i, i));
             // }
+
+            // multiple checkerboard matches
+            int kp_idx = 0;
+            for (int pattern_idx = 0; pattern_idx < checkerboard_sizes.size(); pattern_idx++) {
+                if (pPrev_frame->keypoints_pt_[kp_idx] == cv::Point2f(-1, -1) || pCurr_frame->keypoints_pt_[kp_idx] == cv::Point2f(-1, -1)) {
+                    continue;
+                }
+                else {
+                    for (int i = 0; i < checkerboard_sizes[pattern_idx].area(); i++) {
+                        good_matches_test.push_back(TestMatch(kp_idx + i, kp_idx + i));
+                    }
+                }
+
+                kp_idx += checkerboard_sizes[pattern_idx].area();
+            }
+
+            raw_matches_size = good_matches_test.size();
+
 
             for (auto match : good_matches_test) {
                 image0_kp_pts.push_back(pPrev_frame->keypoints_pt_[match.queryIdx]);
@@ -138,11 +176,8 @@ void Tester::run(VisualOdometry &vo) {
             // set keyframe matches
             setFrameMatches(pCurr_frame, good_matches_test);
 
-            raw_matches_size = manual_matches_vec_[run_iter - 1].size();
             good_matches_size = good_matches_test.size();
         }
-        // // set frame matches
-        // pCurr_frame->setFrameMatches(good_matches);
 
         std::cout << "original features for image" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + std::to_string(pCurr_frame->frame_image_idx_) + ": " << raw_matches_size << std::endl;
         std::cout << "good features for image" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + std::to_string(pCurr_frame->frame_image_idx_) + ": " << good_matches_size << std::endl;
@@ -175,6 +210,8 @@ void Tester::run(VisualOdometry &vo) {
         drawMatches(pPrev_frame, pCurr_frame, good_matches_test);
 
         //**========== 3. Motion estimation ==========**//
+        std::cout << "\n3. Motion estimation" << std::endl;
+
         // start timer [motion estimation]
         std::chrono::time_point<std::chrono::steady_clock> motion_estimation_start = std::chrono::steady_clock::now();
 
@@ -184,19 +221,33 @@ void Tester::run(VisualOdometry &vo) {
         //* TEST mode
         if (vo.pConfig_->test_mode_) {
             std::cout << "\n[test mode] Motion estimation" << std::endl;
-            vo.pUtils_->recoverPose(vo.pCamera_->intrinsic_, essential_mat, image0_kp_pts, image1_kp_pts, relative_pose, pose_mask);
 
+            // // --- My implementation
+            // vo.pUtils_->recoverPose(vo.pCamera_->intrinsic_, essential_mat, image0_kp_pts, image1_kp_pts, relative_pose, pose_mask);
+
+            // // --- GT relative pose
             // relative_pose = vo.pUtils_->getGT(pPrev_frame->frame_image_idx_).inverse() * vo.pUtils_->getGT(pCurr_frame->frame_image_idx_);
 
-            if (run_iter == 2) {
-                relative_pose.translation() *= 2;
-            }
+            // --- OpenCV functions
+            cv::Mat R, t;
+            cv::recoverPose(essential_mat, image0_kp_pts, image1_kp_pts, pCurr_frame->pCamera_->intrinsic_, R, t, pose_mask);
+            Eigen::Matrix3d rotation_mat;
+            Eigen::Vector3d translation_mat;
+            cv::cv2eigen(R, rotation_mat);
+            cv::cv2eigen(t, translation_mat);
+            relative_pose.linear() = rotation_mat;
+            relative_pose.translation() = translation_mat;
+            relative_pose = relative_pose.inverse();
+
+            // if (run_iter == 2) {
+            //     relative_pose.translation() *= 2;
+            // }
         }
         std::cout << "relative pose:\n" << relative_pose.matrix() << std::endl;
 
         pCurr_frame->relative_pose_ = relative_pose;
         pCurr_frame->pose_ = pPrev_frame->pose_ * relative_pose;
-        vo.poses_.push_back(vo.poses_[run_iter - 1] * relative_pose);
+        vo.poses_.push_back(pCurr_frame->pose_);
         vo.relative_poses_.push_back(relative_pose);
 
 
@@ -207,6 +258,8 @@ void Tester::run(VisualOdometry &vo) {
         vo.motion_estimation_costs_.push_back(motion_estimation_cost);
 
         //**========== 4. Triangulation ==========**//
+        std::cout << "\n4. Triangulation" << std::endl;
+
         // start timer [triangulation]
         std::chrono::time_point<std::chrono::steady_clock> triangulation_start = std::chrono::steady_clock::now();
 
@@ -219,6 +272,7 @@ void Tester::run(VisualOdometry &vo) {
             triangulate3(vo, vo.pCamera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches_test, pose_mask, keypoints_3d);
             std::cout << "[debug] Triangulation done." << std::endl;
         }
+
         // end timer [triangulation]
         std::chrono::time_point<std::chrono::steady_clock> triangulation_end = std::chrono::steady_clock::now();
         auto triangulation_diff = triangulation_end - triangulation_start;
@@ -237,16 +291,18 @@ void Tester::run(VisualOdometry &vo) {
                 std::cout << "reprojection error: " << reprojection_error << std::endl;
             }
         }
+
         //**========== 5. Scale estimation ==========**//
+        std::cout << "\n5. Scale estimation" << std::endl;
         // start timer [scaling]
         std::chrono::time_point<std::chrono::steady_clock> scaling_start = std::chrono::steady_clock::now();
 
-        std::vector<int> scale_mask(pCurr_frame->keypoints_pt_.size(), 0);
-        double est_scale_ratio = vo.estimateScale(pPrev_frame, pCurr_frame, scale_mask);
-        double gt_scale_ratio = vo.getGTScale(pCurr_frame);
-        std::cout << "estimated scale: " << est_scale_ratio << ". GT scale: " << gt_scale_ratio << std::endl;
-        vo.scales_.push_back(est_scale_ratio);
-        vo.gt_scales_.push_back(gt_scale_ratio);
+        // std::vector<int> scale_mask(pCurr_frame->keypoints_pt_.size(), 0);
+        // double est_scale_ratio = estimateScale(vo, pPrev_frame, pCurr_frame, scale_mask);
+        // double gt_scale_ratio = vo.getGTScale(pCurr_frame);
+        // std::cout << "estimated scale: " << est_scale_ratio << ". GT scale: " << gt_scale_ratio << std::endl;
+        // vo.scales_.push_back(est_scale_ratio);
+        // vo.gt_scales_.push_back(gt_scale_ratio);
         // applyScale(pCurr_frame, gt_scale_ratio, scale_mask);
         // applyScale(pCurr_frame, est_scale_ratio, scale_mask);
 
@@ -265,6 +321,8 @@ void Tester::run(VisualOdometry &vo) {
         // keypoints_3d_vec_.push_back(keypoints_3d_mat);
 
         //**========== 6. Local optimization ==========**//
+        std::cout << "\n6. Local optimization" << std::endl;
+
         // start timer [optimization]
         const std::chrono::time_point<std::chrono::steady_clock> optimization_start = std::chrono::steady_clock::now();
         if (vo.pConfig_->do_optimize_) {
@@ -467,6 +525,32 @@ void Tester::setFrameKeypoints_pt(const std::shared_ptr<Frame> &pFrame, std::vec
 
     // init keypoint_landmark_
     pFrame->keypoint_landmark_.assign(kp_pts.size(), std::pair(-1, -1));
+}
+
+void Tester::setFrameKeypoints_pt(const std::shared_ptr<Frame> &pFrame, std::vector<std::vector<cv::Point2f>> kp_pts_vec) {
+    std::cout << "----- Tester::setFrameKeypoints_pt -----" << std::endl;
+
+    int total_kp_pts_cnt = 0;
+
+    // init keypoints_pt_
+    for (auto kp_pts : kp_pts_vec) {
+        pFrame->keypoints_pt_.insert(pFrame->keypoints_pt_.end(), kp_pts.begin(), kp_pts.end());
+
+        total_kp_pts_cnt += kp_pts.size();
+    }
+
+    // init 3D keypoints
+    pFrame->keypoints_3d_.assign(total_kp_pts_cnt, Eigen::Vector3d(0.0, 0.0, 0.0));
+
+    // init matches
+    pFrame->matches_with_prev_frame_ = std::vector<int>(total_kp_pts_cnt, -1);
+    pFrame->matches_with_next_frame_ = std::vector<int>(total_kp_pts_cnt, -1);
+
+    // init depths_
+    pFrame->depths_.reserve(total_kp_pts_cnt);
+
+    // init keypoint_landmark_
+    pFrame->keypoint_landmark_.assign(total_kp_pts_cnt, std::pair(-1, -1));
 }
 
 void Tester::setFrameMatches(const std::shared_ptr<Frame> &pFrame, const std::vector<TestMatch> &matches_with_prev_frame) {
@@ -932,26 +1016,7 @@ double Tester::estimateScale(VisualOdometry &vo,const std::shared_ptr<Frame> &pP
     }
 
     std::shared_ptr<Frame> pBefore_prev_frame = pPrev_frame->pPrevious_frame_.lock();
-    for (auto pLandmark : pPrev_frame->landmarks_) {
-
-        std::cout << "landmark [" << pLandmark->id_ << "] observations: " << std::endl;
-        for (auto observation : pLandmark->observations_) {
-            std::cout << "  (" << observation.first << ") " << observation.second << std::endl;
-        }
-
-        if (pLandmark->observations_.find(pCurr_frame->id_) != pLandmark->observations_.end()  // 현재 프레임에서 관측되는 landmark 이면서
-            && pLandmark->observations_.find(pPrev_frame->id_) != pLandmark->observations_.end()  // 이전 프레임에서 관측되는 landmark 이면서
-            && pLandmark->observations_.find(pBefore_prev_frame->id_) != pLandmark->observations_.end()) {  // 전전 프레임에서 관측되는 landmark
-            int curr_frame_feature_idx = pLandmark->observations_.find(pCurr_frame->id_)->second;
-            
-            prev_frame_covisible_feature_idxs.push_back(pLandmark->observations_.find(pPrev_frame->id_)->second);
-            curr_frame_covisible_feature_idxs.push_back(pLandmark->observations_.find(pCurr_frame->id_)->second);
-
-            scale_mask[curr_frame_feature_idx] = 1;
-        }
-    }
-
-
+    
     //**========== 2. Feature matching ==========**//
     std::vector<cv::DMatch> good_matches;  // good matchings
 
@@ -960,28 +1025,81 @@ double Tester::estimateScale(VisualOdometry &vo,const std::shared_ptr<Frame> &pP
 
     // extract points from keypoints
     std::vector<cv::Point2f> image0_kp_pts;
-    std::vector<cv::Point2f> image1_kp_pts;
+    std::vector<cv::Point2f> image2_kp_pts;
 
     // image0 & image1 (matcher matching)
-    std::vector<std::vector<cv::DMatch>> image_matches01_vec;
-    std::vector<std::vector<cv::DMatch>> image_matches10_vec;
-    vo.knnMatch(pBefore_prev_frame->descriptors_, pCurr_frame->descriptors_, image_matches01_vec, 2);  // prev -> curr matches
-    vo.knnMatch(pCurr_frame->descriptors_, pPrev_frame->descriptors_, image_matches10_vec, 2);  // curr -> prev matches
+    std::vector<std::vector<cv::DMatch>> image_matches02_vec;
+    std::vector<std::vector<cv::DMatch>> image_matches20_vec;
+    vo.knnMatch(pBefore_prev_frame->descriptors_, pCurr_frame->descriptors_, image_matches02_vec, 2);  // beforePrev -> curr matches
+    vo.knnMatch(pCurr_frame->descriptors_, pPrev_frame->descriptors_, image_matches20_vec, 2);  // curr -> beforePrev matches
 
-    raw_matches_size = image_matches01_vec.size();
+    raw_matches_size = image_matches02_vec.size();
 
     // Mark II
-    for (int i = 0; i < image_matches01_vec.size(); i++) {
-        if (image_matches01_vec[i][0].distance < image_matches01_vec[i][1].distance * vo.pConfig_->des_dist_thresh_) {  // prev -> curr match에서 좋은가?
-            int image1_keypoint_idx = image_matches01_vec[i][0].trainIdx;
-            if (image_matches10_vec[image1_keypoint_idx][0].distance < image_matches10_vec[image1_keypoint_idx][1].distance * vo.pConfig_->des_dist_thresh_) {  // curr -> prev match에서 좋은가?
-                if (image_matches01_vec[i][0].queryIdx == image_matches10_vec[image1_keypoint_idx][0].trainIdx)
-                    good_matches.push_back(image_matches01_vec[i][0]);
+    for (int i = 0; i < image_matches02_vec.size(); i++) {
+        if (image_matches02_vec[i][0].distance < image_matches02_vec[i][1].distance * vo.pConfig_->des_dist_thresh_) {  // prev -> curr match에서 좋은가?
+            int image1_keypoint_idx = image_matches02_vec[i][0].trainIdx;
+            if (image_matches20_vec[image1_keypoint_idx][0].distance < image_matches20_vec[image1_keypoint_idx][1].distance * vo.pConfig_->des_dist_thresh_) {  // curr -> prev match에서 좋은가?
+                if (image_matches02_vec[i][0].queryIdx == image_matches20_vec[image1_keypoint_idx][0].trainIdx)
+                    good_matches.push_back(image_matches02_vec[i][0]);
             }
         }
     }
 
     good_matches_size = good_matches.size();
+
+    // covisible features
+    std::vector<int> covisible_feature_idxs_02_0, covisible_feature_idxs_01_1, covisible_feature_idxs_02_2;
+
+    for (int i = 0; i < pBefore_prev_frame->matches_with_next_frame_.size(); i++) {
+        int pBefore_prev_kp_idx = i;
+        for (int j = 0; j < good_matches.size(); j++) {
+            if (good_matches[j].queryIdx == pBefore_prev_kp_idx) {
+                covisible_feature_idxs_02_0.push_back(good_matches[j].queryIdx);
+                covisible_feature_idxs_02_2.push_back(good_matches[j].trainIdx);
+                covisible_feature_idxs_01_1.push_back(pBefore_prev_frame->matches_with_next_frame_.at(i));
+            }
+        }
+    }
+
+    std::vector<cv::Point2f> frame0_kp_pts, frame1_kp_pts, frame2_kp_pts;
+    for (int i = 0; i < covisible_feature_idxs_02_0.size(); i++) {
+        frame0_kp_pts.push_back(pBefore_prev_frame->keypoints_pt_.at(covisible_feature_idxs_02_0[i]));
+        frame1_kp_pts.push_back(pPrev_frame->keypoints_pt_.at(covisible_feature_idxs_01_1[i]));
+        frame2_kp_pts.push_back(pCurr_frame->keypoints_pt_.at(covisible_feature_idxs_02_2[i]));
+
+        std::cout << "frame0_kp_pts[" << i << "] " << frame0_kp_pts[i] << std::endl;
+        std::cout << "frame1_kp_pts[" << i << "] " << frame1_kp_pts[i] << std::endl;
+        std::cout << "frame2_kp_pts[" << i << "] " << frame2_kp_pts[i] << std::endl;
+    }
+
+
+    // triangulate
+    std::vector<Eigen::Vector3d> keypoints3d_01, keypoints3d_02;
+    vo.pUtils_->triangulateKeyPoints(pPrev_frame, frame0_kp_pts, frame1_kp_pts, keypoints3d_01);
+    vo.pUtils_->triangulateKeyPoints(pCurr_frame, frame0_kp_pts, frame2_kp_pts, keypoints3d_02);
+
+    Eigen::Vector3d prev_keypoint_3d = keypoints3d_01[0];
+    Eigen::Vector3d curr_keypoint_3d;
+    double acc_distance_01 = 0;
+    for (int i = 1; i < keypoints3d_01.size(); i++) {  // i = landmark index
+        curr_keypoint_3d = keypoints3d_01[i];
+
+        acc_distance_01 += (curr_keypoint_3d - prev_keypoint_3d).norm();
+
+        prev_keypoint_3d = curr_keypoint_3d;
+    }
+
+    prev_keypoint_3d = keypoints3d_02[0];
+    double acc_distance_02 = 0;
+    for (int i = 1; i < keypoints3d_02.size(); i++) {  // i = landmark index
+        curr_keypoint_3d = keypoints3d_02[i];
+
+        acc_distance_02 += (curr_keypoint_3d - prev_keypoint_3d).norm();
+
+        prev_keypoint_3d = curr_keypoint_3d;
+    }
+
 
 
     if (prev_frame_covisible_feature_idxs.size() < 2) {
@@ -989,16 +1107,91 @@ double Tester::estimateScale(VisualOdometry &vo,const std::shared_ptr<Frame> &pP
         return 1.0;
     }
 
-    double prev_frame_landmark_distance = vo.calcCovisibleLandmarkDistance(pPrev_frame, prev_frame_covisible_feature_idxs);
-    double curr_frame_landmark_distance = vo.calcCovisibleLandmarkDistance(pCurr_frame, curr_frame_covisible_feature_idxs);
-
     // scale_ratio = curr_frame_landmark_distance / prev_frame_landmark_distance;
-    scale_ratio = prev_frame_landmark_distance / curr_frame_landmark_distance;
+    scale_ratio = acc_distance_02 / acc_distance_01;
 
     return scale_ratio;
 }
 
+std::vector<cv::Point2f> Tester::findMultipleCheckerboards(const cv::Mat &image, const cv::Size &patternSize, int nCheckerboards) {
+    std::vector<cv::Point2f> total_corners;
 
+    cv::TermCriteria criteria = cv::TermCriteria( cv::TermCriteria::EPS + cv::TermCriteria::COUNT, 40, 0.001 );
+    cv::Mat image_copy = image.clone();
+
+    // draw checkerboard corners
+    cv::Mat draw_image;
+    cv::cvtColor(image, draw_image, cv::COLOR_GRAY2BGR);
+    static int num = 0;
+
+    for (int n = 0; n < nCheckerboards; n++) {
+        std::vector<cv::Point2f> corners;
+
+        cv::findChessboardCorners(image_copy, patternSize, corners);
+        cv::cornerSubPix(image, corners, cv::Size(11, 11), cv::Size(-1,-1), criteria);
+
+        bool found;
+        cv::drawChessboardCorners(draw_image, patternSize, corners, found);
+
+        // hide detected region
+        cv::Point2f top_left = corners[0] - cv::Point2f(20, 20);
+        cv::Point2f bottom_right = corners[patternSize.area() - 1] + cv::Point2f(20, 20);
+        cv::rectangle(image_copy, cv::Rect(top_left, bottom_right), cv::Scalar(0, 0, 0), cv::FILLED);
+
+        total_corners.insert(total_corners.end(), corners.begin(), corners.end());
+    }
+
+
+    cv::imwrite("output_logs/landmarks/frame" + std::to_string(num) + "_checkboard_corners.png", draw_image);
+    num++;
+
+    return total_corners;
+}
+
+std::vector<std::vector<cv::Point2f>> Tester::findMultipleCheckerboards(const cv::Mat &image, const std::vector<cv::Size> &patternSizes, int nCheckerboardsEach) {
+    std::vector<std::vector<cv::Point2f>> total_corners(patternSizes.size());
+
+    cv::TermCriteria criteria = cv::TermCriteria( cv::TermCriteria::EPS + cv::TermCriteria::COUNT, 40, 0.001 );
+    cv::Mat image_copy = image.clone();
+
+    // draw checkerboard corners
+    cv::Mat draw_image;
+    cv::cvtColor(image, draw_image, cv::COLOR_GRAY2BGR);
+    static int num = 0;
+
+    for (int n = 0; n < nCheckerboardsEach; n++) {
+        for (int i = 0; i < patternSizes.size(); i++) {
+            cv::Size patternSize = patternSizes[i];
+            std::vector<cv::Point2f> corners;
+
+            cv::findChessboardCorners(image_copy, patternSize, corners);
+            if (corners.size() == 0) {  // pattern not found
+                std::cout << "pattern (" << patternSize.width << ", " << patternSize.height << ") not found" << std::endl;
+
+                corners.assign(patternSize.area(), cv::Point2f(-1, -1));
+            }
+            else {  // pattern found
+                cv::cornerSubPix(image, corners, cv::Size(4, 4), cv::Size(-1,-1), criteria);
+
+                bool found;
+                cv::drawChessboardCorners(draw_image, patternSize, corners, found);
+
+                // hide detected region
+                cv::Point2f top_left = corners[0] - cv::Point2f(20, 20);
+                cv::Point2f bottom_right = corners[patternSize.area() - 1] + cv::Point2f(20, 20);
+                cv::rectangle(image_copy, cv::Rect(top_left, bottom_right), cv::Scalar(0, 0, 0), cv::FILLED);
+            }
+
+            total_corners[i] = corners;
+        }
+    }
+
+
+    cv::imwrite("output_logs/landmarks/frame" + std::to_string(num) + "_checkboard_corners.png", draw_image);
+    num++;
+
+    return total_corners;
+}
 
 
 
