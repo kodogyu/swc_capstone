@@ -34,6 +34,7 @@ public:
 
     double calcCovisibleLandmarkDistance(const std::shared_ptr<Frame> &pFrame, const std::vector<int> &covisible_feature_idxs);
     double estimateScale(const std::shared_ptr<Frame> &pPrev_frame, const std::shared_ptr<Frame> &pCurr_frame, std::vector<int> &scale_mask);
+    double estimateScale2(const std::shared_ptr<Frame> &pPrev_frame, const std::shared_ptr<Frame> &pCurr_frame, std::vector<int> &scale_mask);
     void applyScale(std::shared_ptr<Frame> &pFrame, const double scale_ratio, const std::vector<int> &scale_mask);
     double getGTScale(std::shared_ptr<Frame> pFrame);
     void getGTScales(const std::string gt_path, bool is_kitti, int num_frames, std::vector<double> &gt_scales);

@@ -227,7 +227,8 @@ void VisualOdometry::run() {
         std::chrono::time_point<std::chrono::steady_clock> scaling_start = std::chrono::steady_clock::now();
 
         std::vector<int> scale_mask(pCurr_frame->keypoints_pt_.size(), 0);
-        double est_scale_ratio = estimateScale(pPrev_frame, pCurr_frame, scale_mask);
+        // double est_scale_ratio = estimateScale(pPrev_frame, pCurr_frame, scale_mask);
+        double est_scale_ratio = estimateScale2(pPrev_frame, pCurr_frame, scale_mask);
         double gt_scale_ratio = getGTScale(pCurr_frame);
         std::cout << "estimated scale: " << est_scale_ratio << ". GT scale: " << gt_scale_ratio << std::endl;
         scales_.push_back(est_scale_ratio);
@@ -677,6 +678,92 @@ double VisualOdometry::estimateScale(const std::shared_ptr<Frame> &pPrev_frame, 
 
     // scale_ratio = curr_frame_landmark_distance / prev_frame_landmark_distance;
     scale_ratio = prev_frame_landmark_distance / curr_frame_landmark_distance;
+
+    return scale_ratio;
+}
+
+
+double VisualOdometry::estimateScale2(const std::shared_ptr<Frame> &pPrev_frame, const std::shared_ptr<Frame> &pCurr_frame, std::vector<int> &scale_mask) {
+    std::cout << "----- VisualOdometry::estimateScale2 -----" << std::endl;
+
+    double scale_ratio = 1.0;
+
+    std::vector<int> before_prev_frame_covisible_feature_idxs, prev_frame_covisible_feature_idxs, curr_frame_covisible_feature_idxs;
+
+    if (pPrev_frame->id_ == 0) {
+        return 1.0;
+    }
+
+    std::shared_ptr<Frame> pBefore_prev_frame = pPrev_frame->pPrevious_frame_.lock();
+    for (auto pLandmark : pPrev_frame->landmarks_) {
+
+        std::cout << "landmark [" << pLandmark->id_ << "] observations: " << std::endl;
+        for (auto observation : pLandmark->observations_) {
+            std::cout << "  (" << observation.first << ") " << observation.second << std::endl;
+        }
+
+        if (pLandmark->observations_.find(pCurr_frame->id_) != pLandmark->observations_.end()  // 현재 프레임에서 관측되는 landmark 이면서
+            && pLandmark->observations_.find(pPrev_frame->id_) != pLandmark->observations_.end()  // 이전 프레임에서 관측되는 landmark 이면서
+            && pLandmark->observations_.find(pBefore_prev_frame->id_) != pLandmark->observations_.end()) {  // 전전 프레임에서 관측되는 landmark
+            int curr_frame_feature_idx = pLandmark->observations_.find(pCurr_frame->id_)->second;
+
+            before_prev_frame_covisible_feature_idxs.push_back(pLandmark->observations_.find(pBefore_prev_frame->id_)->second);
+            prev_frame_covisible_feature_idxs.push_back(pLandmark->observations_.find(pPrev_frame->id_)->second);
+            curr_frame_covisible_feature_idxs.push_back(pLandmark->observations_.find(pCurr_frame->id_)->second);
+
+            scale_mask[curr_frame_feature_idx] = 1;
+        }
+    }
+
+
+    std::vector<cv::Point2f> frame0_kp_pts, frame1_kp_pts, frame2_kp_pts;
+    for (int i = 0; i < before_prev_frame_covisible_feature_idxs.size(); i++) {
+        frame0_kp_pts.push_back(pBefore_prev_frame->keypoints_pt_.at(before_prev_frame_covisible_feature_idxs[i]));
+        frame1_kp_pts.push_back(pPrev_frame->keypoints_pt_.at(prev_frame_covisible_feature_idxs[i]));
+        frame2_kp_pts.push_back(pCurr_frame->keypoints_pt_.at(curr_frame_covisible_feature_idxs[i]));
+
+        std::cout << "frame0_kp_pts[" << i << "] " << frame0_kp_pts[i] << std::endl;
+        std::cout << "frame1_kp_pts[" << i << "] " << frame1_kp_pts[i] << std::endl;
+        std::cout << "frame2_kp_pts[" << i << "] " << frame2_kp_pts[i] << std::endl;
+    }
+
+    // draw keypoints
+    pUtils_->drawKeypoints(pBefore_prev_frame, frame0_kp_pts, "output_logs/intra_frames", "pBefore_frame");
+    pUtils_->drawKeypoints(pPrev_frame, frame1_kp_pts, "output_logs/intra_frames", "pPrev_frame");
+    pUtils_->drawKeypoints(pCurr_frame, frame2_kp_pts, "output_logs/intra_frames", "pCurr_frame");
+
+    // triangulate
+    std::vector<Eigen::Vector3d> keypoints3d_01, keypoints3d_02;
+    pUtils_->triangulateKeyPoints(pPrev_frame, frame0_kp_pts, frame1_kp_pts, keypoints3d_01);
+    pUtils_->triangulateKeyPoints(pCurr_frame, frame0_kp_pts, frame2_kp_pts, keypoints3d_02);
+
+    Eigen::Vector3d prev_keypoint_3d = keypoints3d_01[0];
+    Eigen::Vector3d curr_keypoint_3d;
+    double acc_distance_01 = 0;
+    for (int i = 1; i < keypoints3d_01.size(); i++) {  // i = landmark index
+        curr_keypoint_3d = keypoints3d_01[i];
+
+        acc_distance_01 += (curr_keypoint_3d - prev_keypoint_3d).norm();
+
+        prev_keypoint_3d = curr_keypoint_3d;
+    }
+
+    prev_keypoint_3d = keypoints3d_02[0];
+    double acc_distance_02 = 0;
+    for (int i = 1; i < keypoints3d_02.size(); i++) {  // i = landmark index
+        curr_keypoint_3d = keypoints3d_02[i];
+
+        acc_distance_02 += (curr_keypoint_3d - prev_keypoint_3d).norm();
+
+        prev_keypoint_3d = curr_keypoint_3d;
+    }
+
+    if (prev_frame_covisible_feature_idxs.size() < 2) {
+        std::cout << "Number of covisible landmarks should be greater than or equal to 2. Currently " << prev_frame_covisible_feature_idxs.size() << "." << std::endl;
+        return 1.0;
+    }
+
+    scale_ratio = acc_distance_02 / acc_distance_01;
 
     return scale_ratio;
 }
