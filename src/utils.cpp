@@ -275,6 +275,42 @@ void Utils::drawKeypoints(std::shared_ptr<Frame> pFrame,
     cv::imwrite(folder + "/frame" + std::to_string(id) + "_kps" + tail + ".png", image_copy);
 }
 
+void Utils::drawKeypoints(std::shared_ptr<Frame> pFrame,
+                        const std::vector<cv::Point2f> &kp_pts,
+                        std::string folder,
+                        std::string tail) {
+    int id = pFrame->frame_image_idx_;
+    cv::Mat image = pFrame->image_;
+    cv::Mat image_copy;
+
+    if (image.type() == CV_8UC1) {
+        cv::cvtColor(image, image_copy, cv::COLOR_GRAY2BGR);
+    }
+    else {
+        image.copyTo(image_copy);
+    }
+
+    // for (int i = 0; i < img_kps.size(); i++) {
+    for (int i = 0; i < kp_pts.size(); i++) {
+        cv::Point2f img_kp_pt = kp_pts[i];
+        // draw images
+        cv::rectangle(image_copy,
+                    img_kp_pt - cv::Point2f(5, 5),
+                    img_kp_pt + cv::Point2f(5, 5),
+                    cv::Scalar(0, 255, 0));  // green, (yellow)
+        cv::circle(image_copy,
+                    img_kp_pt,
+                    1,
+                    cv::Scalar(0, 0, 255));  // red, (blue)
+    }
+    cv::putText(image_copy, "frame" + std::to_string(id),
+                                    cv::Point(0, 20), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
+    cv::putText(image_copy, "#features: " + std::to_string(kp_pts.size()),
+                                    cv::Point(0, 40), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
+
+    cv::imwrite(folder + "/frame" + std::to_string(id) + "_kps" + tail + ".png", image_copy);
+}
+
 
 void Utils::drawGrid(cv::Mat &image) {
     cv::Size patch_size = cv::Size(pConfig_->patch_width_, pConfig_->patch_height_);
@@ -1177,7 +1213,7 @@ void Utils::cv_triangulatePoints(const std::shared_ptr<Frame>& pPrev_frame, cons
 }
 
 // triangulate all keypoints
-void Utils::triangulateKeyPoints(std::shared_ptr<Frame> &pFrame,
+void Utils::triangulateKeyPoints(const std::shared_ptr<Frame> &pFrame,
                                         std::vector<cv::Point2f> img0_kp_pts,
                                         std::vector<cv::Point2f> img1_kp_pts,
                                         std::vector<Eigen::Vector3d> &triangulated_kps) {

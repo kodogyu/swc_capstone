@@ -31,6 +31,10 @@ public:
     void drawKeypoints(std::shared_ptr<Frame> pFrame,
                     std::string folder,
                     std::string tail);
+    void drawKeypoints(std::shared_ptr<Frame> pFrame,
+                        const std::vector<cv::Point2f> &kp_pts,
+                        std::string folder,
+                        std::string tail);
     void drawMatches(const std::shared_ptr<Frame> &pPrev_frame, const std::shared_ptr<Frame> &pCurr_frame, const std::vector<cv::DMatch> &good_matches);
 
     void alignPoses(const std::vector<Eigen::Isometry3d> &gt_poses, const std::vector<Eigen::Isometry3d> &est_poses, std::vector<Eigen::Isometry3d> &aligned_est_poses);
@@ -83,7 +87,7 @@ public:
     void cv_triangulatePoints(const std::shared_ptr<Frame>& pPrev_frame, const std::vector<cv::Point2f> &prev_kp_pts,
                                 const std::shared_ptr<Frame>& pCurr_frame, const std::vector<cv::Point2f> &curr_kp_pts,
                                 const std::vector<cv::DMatch> &good_matches, std::vector<Eigen::Vector3d> &keypoints_3d);
-    void triangulateKeyPoints(std::shared_ptr<Frame> &pFrame,
+    void triangulateKeyPoints(const std::shared_ptr<Frame> &pFrame,
                                         std::vector<cv::Point2f> img0_kp_pts,
                                         std::vector<cv::Point2f> img1_kp_pts,
                                         std::vector<Eigen::Vector3d> &triangulated_kps);
