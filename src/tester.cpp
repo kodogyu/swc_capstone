@@ -59,7 +59,8 @@ void Tester::run(VisualOdometry &vo) {
 
     for (int run_iter = 1; run_iter < vo.pConfig_->num_frames_; run_iter++) {
         // start timer [total time cost]
-        std::chrono::time_point<std::chrono::steady_clock> total_time_start = std::chrono::steady_clock::now();
+        Timer total_timer;
+        total_timer.start();
 
         std::cout << "frame [" << run_iter << "] image: " << vo.pConfig_->left_image_entries_[run_iter] << std::endl;
         image1_left = cv::imread(vo.pConfig_->left_image_entries_[run_iter], cv::IMREAD_GRAYSCALE);
@@ -232,20 +233,60 @@ void Tester::run(VisualOdometry &vo) {
             // // --- GT relative pose
             // relative_pose = vo.pUtils_->getGT(pPrev_frame->frame_image_idx_).inverse() * vo.pUtils_->getGT(pCurr_frame->frame_image_idx_);
 
-            // --- OpenCV functions
-            cv::Mat R, t;
-            cv::recoverPose(essential_mat, image0_kp_pts, image1_kp_pts, pCurr_frame->pCamera_->intrinsic_, R, t, pose_mask);
-            Eigen::Matrix3d rotation_mat;
-            Eigen::Vector3d translation_mat;
-            cv::cv2eigen(R, rotation_mat);
-            cv::cv2eigen(t, translation_mat);
-            relative_pose.linear() = rotation_mat;
-            relative_pose.translation() = translation_mat;
-            relative_pose = relative_pose.inverse();
+            if (run_iter == 1) {
+                // --- OpenCV functions (recoverPose)
+                cv::Mat R, t;
+                cv::recoverPose(essential_mat, image0_kp_pts, image1_kp_pts, pCurr_frame->pCamera_->intrinsic_, R, t, pose_mask);
+                Eigen::Matrix3d rotation_mat;
+                Eigen::Vector3d translation_mat;
+                cv::cv2eigen(R, rotation_mat);
+                cv::cv2eigen(t, translation_mat);
+                relative_pose.linear() = rotation_mat;
+                relative_pose.translation() = translation_mat;
+                relative_pose = relative_pose.inverse();
+            }
+            else {
+                // --- OpenCV functions (solvePnP)
+                cv::Mat rvec, tvec;
+                std::vector<cv::Point3d> object_points;
+                std::vector<cv::Point2d> image_points;
 
-            // if (run_iter == 2) {
-            //     relative_pose.translation() *= 2;
-            // }
+                // for (int i = 0; i < good_matches_size; i++) {
+                for (int i = 0; i < checkerboard_sizes[0].area(); i++) {
+                    // object points
+                    Eigen::Vector3d object_point;
+
+                    //! 해당 랜드마크에서 다른 frame의 keypoint와 유사성도 고려해야 함.
+                    int landmark_idx = pPrev_frame->keypoint_landmark_.at(good_matches_test[i].queryIdx).first;
+                    object_point = pPrev_frame->landmarks_.at(landmark_idx)->point_3d_;
+
+                    cv::Point3d object_point_cv(object_point.x(), object_point.y(), object_point.z());
+                    object_points.push_back(object_point_cv);
+
+                    // image points
+                    cv::Point2f keypoint_pt = image1_kp_pts.at(good_matches_test[i].trainIdx);
+                    image_points.push_back(keypoint_pt);
+
+                    std::cout << "landmark idx: " << landmark_idx << ", image1 keypoint idx: " << good_matches_test[i].trainIdx << std::endl;
+                }
+
+                cv::solvePnP(object_points, image_points, vo.pCamera_->intrinsic_, vo.pCamera_->distortion_, rvec, tvec, false, cv::SOLVEPNP_IPPE);
+                // cv::solvePnP(object_points, image_points, vo.pCamera_->intrinsic_, vo.pCamera_->distortion_, rvec, tvec, false, cv::SOLVEPNP_EPNP);
+                std::cout << "rvec.size: " << rvec.size << std::endl;
+                std::cout << "tvec.size: " << tvec.size << std::endl;
+
+                cv::Mat R, t;
+                cv::Rodrigues(rvec, R);
+                t = tvec;
+
+                Eigen::Matrix3d rotation_mat;
+                Eigen::Vector3d translation_mat;
+                cv::cv2eigen(R, rotation_mat);
+                cv::cv2eigen(t, translation_mat);
+                relative_pose.linear() = rotation_mat;
+                relative_pose.translation() = translation_mat;
+                relative_pose = relative_pose.inverse();
+            }
         }
         std::cout << "relative pose:\n" << relative_pose.matrix() << std::endl;
 
@@ -285,10 +326,14 @@ void Tester::run(VisualOdometry &vo) {
         //* TEST mode
         if (vo.pConfig_->test_mode_) {
             vo.pUtils_->triangulateKeyPoints(pCurr_frame, image0_kp_pts, image1_kp_pts, triangulated_kps);
-            drawReprojectedLandmarks(pCurr_frame, good_matches_test, pose_mask, triangulated_kps);
+            drawReprojectedKeypoints3D(pCurr_frame, good_matches_test, pose_mask, triangulated_kps);
+            drawReprojectedLandmarks(pCurr_frame, good_matches_test);
             if (vo.pConfig_->calc_reprojection_error_) {
-                double reprojection_error = calcReprojectionError(pCurr_frame, good_matches_test, pose_mask, triangulated_kps);
-                std::cout << "reprojection error: " << reprojection_error << std::endl;
+                double reprojection_error_kps = calcReprojectionError(pCurr_frame, good_matches_test, pose_mask, triangulated_kps);
+                std::cout << "triangulated kps reprojection error: " << reprojection_error_kps << std::endl;
+
+                double reprojection_error_landmarks = vo.pUtils_->calcReprojectionError(pCurr_frame);
+                std::cout << "landmarks reprojection error: " << reprojection_error_landmarks << std::endl;
             }
         }
 
@@ -357,10 +402,7 @@ void Tester::run(VisualOdometry &vo) {
         pPrev_frame = pCurr_frame;
 
         // end timer [total time]
-        std::chrono::time_point<std::chrono::steady_clock> total_time_end = std::chrono::steady_clock::now();
-        auto total_time_diff = total_time_end - total_time_start;
-        auto total_time_cost = std::chrono::duration_cast<std::chrono::milliseconds>(total_time_diff).count();  // total time cost (ms)
-        vo.total_time_costs_.push_back(total_time_cost);
+        vo.total_time_costs_.push_back(total_timer.stop());
 
         // logger_.logTrajectoryTxtAppend(pCurr_frame->pose_);
         // logger_.logTimecostAppend(feature_extraction_cost,
@@ -666,9 +708,8 @@ void Tester::triangulate3(const VisualOdometry &visual_odometry,
     }
 }
 
-void Tester::drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
+void Tester::drawReprojectedKeypoints3D(const std::shared_ptr<Frame> &pFrame,
                                     const std::vector<TestMatch> &good_matches,
-                                    // const cv::Mat &essential_mask,
                                     const cv::Mat &pose_mask,
                                     const std::vector<Eigen::Vector3d> &triangulated_kps) {
     std::shared_ptr<Frame> pPrev_frame = pFrame->pPrevious_frame_.lock();
@@ -731,7 +772,67 @@ void Tester::drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
     cv::putText(result_image, "#recover pose inliers: " + std::to_string(pose_inlier_cnt),
                                     cv::Point(0, 60), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
 
-    cv::imwrite("output_logs/inter_frames/reprojected_landmarks/frame" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + "frame" + std::to_string(pFrame->frame_image_idx_) + "_proj.png", result_image);
+    cv::imwrite("output_logs/inter_frames/reprojected_landmarks/frame" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + "frame" + std::to_string(pFrame->frame_image_idx_) + "_proj_kps.png", result_image);
+}
+
+void Tester::drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
+                                    const std::vector<TestMatch> &good_matches) {
+    std::shared_ptr<Frame> pPrev_frame = pFrame->pPrevious_frame_.lock();
+
+    cv::Mat curr_frame_img, prev_frame_img;
+    cv::cvtColor(pFrame->image_, curr_frame_img, cv::COLOR_GRAY2BGR);
+    cv::cvtColor(pPrev_frame->image_, prev_frame_img, cv::COLOR_GRAY2BGR);
+
+    std::vector<Eigen::Vector3d> landmarks;
+    for (auto pLandmark : pFrame->landmarks_) {
+        landmarks.push_back(pLandmark->point_3d_);
+    }
+
+    std::vector<cv::Point2f> prev_projected_pts, curr_projected_pts;
+    reprojectLandmarks(pFrame, good_matches, cv::Mat(), landmarks, prev_projected_pts, curr_projected_pts);
+
+    int essential_inlier_cnt = 0;
+    for (int i = 0; i < good_matches.size(); i++) {
+        cv::Point2f measurement_point0 = pPrev_frame->keypoints_pt_[good_matches[i].queryIdx];
+        cv::Point2f measurement_point1 = pFrame->keypoints_pt_[good_matches[i].trainIdx];
+
+        // draw images
+        cv::rectangle(prev_frame_img,
+                    measurement_point0 - cv::Point2f(5, 5),
+                    measurement_point0 + cv::Point2f(5, 5),
+                    cv::Scalar(0, 255, 0));  // green, (orange)
+        cv::circle(prev_frame_img,
+                    prev_projected_pts[i],
+                    2,
+                    cv::Scalar(0, 0, 255));  // red, (blue)
+        cv::line(prev_frame_img,
+                    measurement_point0,
+                    prev_projected_pts[i],
+                    cv::Scalar(0, 0, 255));  // red, (blue)
+        cv::rectangle(curr_frame_img,
+                    measurement_point1 - cv::Point2f(5, 5),
+                    measurement_point1 + cv::Point2f(5, 5),
+                    cv::Scalar(0, 255, 0));  // green, (orange)
+        cv::circle(curr_frame_img,
+                    curr_projected_pts[i],
+                    2,
+                    cv::Scalar(0, 0, 255));  // red, (blue)
+        cv::line(curr_frame_img,
+                    measurement_point1,
+                    curr_projected_pts[i],
+                    cv::Scalar(0, 0, 255));  // red, (blue)
+
+        essential_inlier_cnt++;
+    }
+    cv::Mat result_image;
+    cv::hconcat(prev_frame_img, curr_frame_img, result_image);
+
+    cv::putText(result_image, "frame" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + std::to_string(pFrame->frame_image_idx_),
+                                cv::Point(0, 20), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
+    cv::putText(result_image, "#essential inliers / matched features: " + std::to_string(essential_inlier_cnt) + " / " + std::to_string(good_matches.size()),
+                                    cv::Point(0, 40), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
+
+    cv::imwrite("output_logs/inter_frames/reprojected_landmarks/frame" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + "frame" + std::to_string(pFrame->frame_image_idx_) + "_proj_landmarks.png", result_image);
 }
 
 void Tester::drawMatches(const std::shared_ptr<Frame> &pPrev_frame, const std::shared_ptr<Frame> &pCurr_frame, const std::vector<TestMatch> &good_matches) {
@@ -1190,6 +1291,12 @@ std::vector<std::vector<cv::Point2f>> Tester::findMultipleCheckerboards(const cv
 
     return total_corners;
 }
+
+
+
+
+
+
 
 
 

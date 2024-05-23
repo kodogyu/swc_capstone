@@ -86,9 +86,8 @@ void Utils::drawReprojectedLandmarks(const std::vector<std::shared_ptr<Frame>> &
     }
 }
 
-void Utils::drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
+void Utils::drawReprojectedKeypoints3D(const std::shared_ptr<Frame> &pFrame,
                                     const std::vector<cv::DMatch> &good_matches,
-                                    // const cv::Mat &essential_mask,
                                     const cv::Mat &pose_mask,
                                     const std::vector<Eigen::Vector3d> &triangulated_kps) {
     std::shared_ptr<Frame> pPrev_frame = pFrame->pPrevious_frame_.lock();
@@ -98,7 +97,7 @@ void Utils::drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
     cv::cvtColor(pPrev_frame->image_, prev_frame_img, cv::COLOR_GRAY2BGR);
 
     std::vector<cv::Point2f> prev_projected_pts, curr_projected_pts;
-    reprojectLandmarks(pFrame, good_matches, cv::Mat(), triangulated_kps, prev_projected_pts, curr_projected_pts);
+    reproject3DPoints(pFrame, good_matches, cv::Mat(), triangulated_kps, prev_projected_pts, curr_projected_pts);
 
     int essential_inlier_cnt = 0;
     int pose_inlier_cnt = 0;
@@ -151,7 +150,67 @@ void Utils::drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
     cv::putText(result_image, "#recover pose inliers: " + std::to_string(pose_inlier_cnt),
                                     cv::Point(0, 60), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
 
-    cv::imwrite("output_logs/inter_frames/reprojected_landmarks/frame" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + "frame" + std::to_string(pFrame->frame_image_idx_) + "_proj.png", result_image);
+    cv::imwrite("output_logs/inter_frames/reprojected_landmarks/frame" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + "frame" + std::to_string(pFrame->frame_image_idx_) + "_proj_kps.png", result_image);
+}
+
+void Utils::drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
+                                    const std::vector<cv::DMatch> &good_matches) {
+    std::shared_ptr<Frame> pPrev_frame = pFrame->pPrevious_frame_.lock();
+
+    cv::Mat curr_frame_img, prev_frame_img;
+    cv::cvtColor(pFrame->image_, curr_frame_img, cv::COLOR_GRAY2BGR);
+    cv::cvtColor(pPrev_frame->image_, prev_frame_img, cv::COLOR_GRAY2BGR);
+
+    std::vector<Eigen::Vector3d> landmarks;
+    for (auto pLandmark : pFrame->landmarks_) {
+        landmarks.push_back(pLandmark->point_3d_);
+    }
+
+    std::vector<cv::Point2f> prev_projected_pts, curr_projected_pts;
+    reproject3DPoints(pFrame, good_matches, cv::Mat(), landmarks, prev_projected_pts, curr_projected_pts);
+
+    int essential_inlier_cnt = 0;
+    for (int i = 0; i < good_matches.size(); i++) {
+        cv::Point2f measurement_point0 = pPrev_frame->keypoints_pt_[good_matches[i].queryIdx];
+        cv::Point2f measurement_point1 = pFrame->keypoints_pt_[good_matches[i].trainIdx];
+
+        // draw images
+        cv::rectangle(prev_frame_img,
+                    measurement_point0 - cv::Point2f(5, 5),
+                    measurement_point0 + cv::Point2f(5, 5),
+                    cv::Scalar(0, 255, 0));  // green, (orange)
+        cv::circle(prev_frame_img,
+                    prev_projected_pts[i],
+                    2,
+                    cv::Scalar(0, 0, 255));  // red, (blue)
+        cv::line(prev_frame_img,
+                    measurement_point0,
+                    prev_projected_pts[i],
+                    cv::Scalar(0, 0, 255));  // red, (blue)
+        cv::rectangle(curr_frame_img,
+                    measurement_point1 - cv::Point2f(5, 5),
+                    measurement_point1 + cv::Point2f(5, 5),
+                    cv::Scalar(0, 255, 0));  // green, (orange)
+        cv::circle(curr_frame_img,
+                    curr_projected_pts[i],
+                    2,
+                    cv::Scalar(0, 0, 255));  // red, (blue)
+        cv::line(curr_frame_img,
+                    measurement_point1,
+                    curr_projected_pts[i],
+                    cv::Scalar(0, 0, 255));  // red, (blue)
+
+        essential_inlier_cnt++;
+    }
+    cv::Mat result_image;
+    cv::hconcat(prev_frame_img, curr_frame_img, result_image);
+
+    cv::putText(result_image, "frame" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + std::to_string(pFrame->frame_image_idx_),
+                                cv::Point(0, 20), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
+    cv::putText(result_image, "#essential inliers / matched features: " + std::to_string(essential_inlier_cnt) + " / " + std::to_string(good_matches.size()),
+                                    cv::Point(0, 40), cv::FONT_HERSHEY_PLAIN, 1, cv::Scalar(0, 255, 0));
+
+    cv::imwrite("output_logs/inter_frames/reprojected_landmarks/frame" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + "frame" + std::to_string(pFrame->frame_image_idx_) + "_proj_landmarks.png", result_image);
 }
 
 void Utils::drawCvReprojectedLandmarks(const std::shared_ptr<Frame> &pPrev_frame,
@@ -615,20 +674,51 @@ double Utils::calcReprojectionError(const std::vector<std::shared_ptr<Frame>> &f
     return reprojection_error;
 }
 
+double Utils::calcReprojectionError(const std::shared_ptr<Frame> &pFrame) {
+    double reprojection_error = 0;
+
+    Eigen::Matrix3d K;
+    cv::cv2eigen(pFrame->pCamera_->intrinsic_, K);
+
+    Eigen::Isometry3d w_T_c = pFrame->pose_;
+    Eigen::Isometry3d c_T_w = w_T_c.inverse();
+
+    double error = 0;
+    for (const auto pLandmark : pFrame->landmarks_) {
+        Eigen::Vector3d landmark_point_3d = pLandmark->point_3d_;
+        Eigen::Vector4d landmark_point_3d_homo(landmark_point_3d[0],
+                                                landmark_point_3d[1],
+                                                landmark_point_3d[2],
+                                                1);
+
+        Eigen::Vector3d projected_point_homo = K * c_T_w.matrix().block<3, 4>(0, 0) * landmark_point_3d_homo;
+
+        cv::Point2f projected_point(projected_point_homo[0] / projected_point_homo[2],
+                                    projected_point_homo[1] / projected_point_homo[2]);
+        cv::Point2f measurement_point = pFrame->keypoints_pt_[pLandmark->observations_.find(pFrame->id_)->second];
+
+        cv::Point2f error_vector = projected_point - measurement_point;
+        error = sqrt(error_vector.x * error_vector.x + error_vector.y * error_vector.y);
+        reprojection_error += error;
+    }
+
+    return reprojection_error;
+}
+
 double Utils::calcReprojectionError(const std::shared_ptr<Frame> &pFrame,
                                     const std::vector<cv::DMatch> &matches,
                                     const cv::Mat &mask,
-                                    const std::vector<Eigen::Vector3d> &landmark_points_3d) {
+                                    const std::vector<Eigen::Vector3d> &points_3d) {
     // assume matches.size() = landmark_points_3d.size()
     std::vector<cv::Point2f> prev_projected_pts, curr_projected_pts;
-    reprojectLandmarks(pFrame, matches, cv::Mat(), landmark_points_3d, prev_projected_pts, curr_projected_pts);
+    reproject3DPoints(pFrame, matches, cv::Mat(), points_3d, prev_projected_pts, curr_projected_pts);
 
     std::shared_ptr<Frame> pPrev_frame = pFrame->pPrevious_frame_.lock();
 
     double error_prev = 0, error_curr = 0;
     double reproj_error_prev = 0, reproj_error_curr = 0;
     int point_cnt = 0;
-    for (int i = 0; i < landmark_points_3d.size(); i++) {
+    for (int i = 0; i < points_3d.size(); i++) {
         if (mask.at<unsigned char>(i) == 1) {
             // cv::Point2f measurement_point0 = pPrev_frame->keypoints_[matches[i].queryIdx].pt;
             // cv::Point2f measurement_point1 = pFrame->keypoints_[matches[i].trainIdx].pt;
@@ -706,10 +796,10 @@ void Utils::drawCorrespondingFeatures(const std::vector<std::shared_ptr<Frame>> 
     }
 }
 
-void Utils::reprojectLandmarks(const std::shared_ptr<Frame> &pFrame,
+void Utils::reproject3DPoints(const std::shared_ptr<Frame> &pFrame,
                             const std::vector<cv::DMatch> &matches,
                             const cv::Mat &mask,
-                            const std::vector<Eigen::Vector3d> &landmark_points_3d,
+                            const std::vector<Eigen::Vector3d> &points_3d,
                             std::vector<cv::Point2f> &prev_projected_pts,
                             std::vector<cv::Point2f> &curr_projected_pts) {
     // std::cout << "----- Utils::reprojectLandmarks -----" << std::endl;
@@ -731,7 +821,7 @@ void Utils::reprojectLandmarks(const std::shared_ptr<Frame> &pFrame,
 
     for (int i = 0; i < matches.size(); i++) {
         if (mask.empty() || mask.at<unsigned char>(i) == 1) {
-            Eigen::Vector3d landmark_point_3d = landmark_points_3d[i];
+            Eigen::Vector3d landmark_point_3d = points_3d[i];
             Eigen::Vector4d landmark_point_3d_homo(landmark_point_3d[0],
                                                     landmark_point_3d[1],
                                                     landmark_point_3d[2],

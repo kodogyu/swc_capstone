@@ -39,7 +39,8 @@ void VisualOdometry::run() {
 
     for (int run_iter = 1; run_iter < pConfig_->num_frames_; run_iter++) {
         // start timer [total time cost]
-        std::chrono::time_point<std::chrono::steady_clock> total_time_start = std::chrono::steady_clock::now();
+        Timer total_timer;
+        total_timer.start();
 
         image1_left = cv::imread(pConfig_->left_image_entries_[run_iter], cv::IMREAD_GRAYSCALE);
         // image1_left = readImage(i);
@@ -209,10 +210,15 @@ void VisualOdometry::run() {
         std::vector<Eigen::Vector3d> triangulated_kps, triangulated_kps_cv;
 
         pUtils_->triangulateKeyPoints(pCurr_frame, image0_kp_pts, image1_kp_pts, triangulated_kps);
-        pUtils_->drawReprojectedLandmarks(pCurr_frame, good_matches, pose_mask, triangulated_kps);
+        pUtils_->drawReprojectedKeypoints3D(pCurr_frame, good_matches, pose_mask, triangulated_kps);
+        pUtils_->drawReprojectedLandmarks(pCurr_frame, good_matches);
+
         if (pConfig_->calc_reprojection_error_) {
-            double reprojection_error = pUtils_->calcReprojectionError(pCurr_frame, good_matches, pose_mask, triangulated_kps);
-            std::cout << "reprojection error: " << reprojection_error << std::endl;
+            double reprojection_error_kps = pUtils_->calcReprojectionError(pCurr_frame, good_matches, pose_mask, triangulated_kps);
+            std::cout << "triangulated kps reprojection error: " << reprojection_error_kps << std::endl;
+
+            double reprojection_error_landmarks = pUtils_->calcReprojectionError(pCurr_frame);
+            std::cout << "landmarks reprojection error: " << reprojection_error_landmarks << std::endl;
         }
 
         //**========== 5. Scale estimation ==========**//
@@ -254,10 +260,7 @@ void VisualOdometry::run() {
             }
         }
         // end timer [optimization]
-        const std::chrono::time_point<std::chrono::steady_clock> optimization_end = std::chrono::steady_clock::now();
-        auto optimization_diff = optimization_end - optimization_start;
-        auto optimization_cost = std::chrono::duration_cast<std::chrono::milliseconds>(optimization_diff).count();
-        optimization_costs_.push_back(optimization_cost);
+        optimization_costs_.push_back(optimization_timer.stop());
 
         // update visualizer buffer
         if (pConfig_->do_optimize_) {
@@ -272,7 +275,7 @@ void VisualOdometry::run() {
         pPrev_frame = pCurr_frame;
 
         // end timer [total time]
-        optimization_costs_.push_back(optimization_timer.stop());
+        total_time_costs_.push_back(total_timer.stop());
 
         // logger_.logTrajectoryTxtAppend(pCurr_frame->pose_);
         // logger_.logTimecostAppend(feature_extraction_cost,
