@@ -19,5 +19,5 @@ public:
     double k1_ = 0, k2_ = 0, p1_ = 0, p2_ = 0, k3_ = 0;
 
     cv::Mat intrinsic_ = cv::Mat(3, 3, CV_64F);  // camera intrinsic parameter
-    cv::Mat distortion_ = cv::Mat();  // camera distortion parameter (fisheye camera)
+    cv::Mat distortion_ = cv::Mat::zeros(4, 1, CV_64FC1);  // camera distortion parameter (fisheye camera)
 };

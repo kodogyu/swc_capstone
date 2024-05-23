@@ -16,11 +16,12 @@ public:
     void drawFramesLandmarks(const std::vector<std::shared_ptr<Frame>> &frames);
     void drawKeypoints(const std::shared_ptr<Frame> &pFrame);
     void drawReprojectedLandmarks(const std::vector<std::shared_ptr<Frame>> &frames);
-    void drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
+    void drawReprojectedKeypoints3D(const std::shared_ptr<Frame> &pFrame,
                                 const std::vector<cv::DMatch> &good_matches,
-                                // const cv::Mat &essential_mask,
                                 const cv::Mat &pose_mask,
                                 const std::vector<Eigen::Vector3d> &triangulated_kps);
+    void drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
+                                    const std::vector<cv::DMatch> &good_matches);
     void drawCvReprojectedLandmarks(const std::shared_ptr<Frame> &pPrev_frame,
                                     const std::vector<cv::Point2f> &image0_kp_pts,
                                     const std::shared_ptr<Frame> &pCurr_frame,
@@ -46,16 +47,17 @@ public:
     Eigen::Isometry3d getGT(const int frame_idx);
 
     double calcReprojectionError(const std::vector<std::shared_ptr<Frame>> &frames);
+    double calcReprojectionError(const std::shared_ptr<Frame> &pFrame);
     double calcReprojectionError(const std::shared_ptr<Frame> &pFrame,
                                 const std::vector<cv::DMatch> &matches,
                                 const cv::Mat &mask,
                                 const std::vector<Eigen::Vector3d> &landmark_points_3d);
 
     void drawCorrespondingFeatures(const std::vector<std::shared_ptr<Frame>> &frames, const int target_frame_id, const int dup_count);
-    void reprojectLandmarks(const std::shared_ptr<Frame> &pFrame,
+    void reproject3DPoints(const std::shared_ptr<Frame> &pFrame,
                             const std::vector<cv::DMatch> &matches,
                             const cv::Mat &mask,
-                            const std::vector<Eigen::Vector3d> &landmark_points_3d,
+                            const std::vector<Eigen::Vector3d> &points_3d,
                             std::vector<cv::Point2f> &prev_projected_pts,
                             std::vector<cv::Point2f> &curr_projected_pts);
 

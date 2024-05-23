@@ -16,7 +16,8 @@ public:
 
     void displayPoses(const std::vector<Eigen::Isometry3d> &poses);
     void displayPoses(const std::vector<std::shared_ptr<Frame>> &frames);
-    void displayPoseWithKeypoints(const std::vector<Eigen::Isometry3d> &poses, const std::vector<cv::Mat> &keypoints_3d_vec);
+    void displayPosesWithKeypoints(const std::vector<Eigen::Isometry3d> &poses, const std::vector<cv::Mat> &keypoints_3d_vec);
+    void displayPosesAnd3DPoints(const std::vector<Eigen::Isometry3d> &poses, const std::vector<Eigen::Vector3d> &points_3d);
     void displayFramesAndLandmarks(const std::vector<std::shared_ptr<Frame>> &frames);
 
     // display online
