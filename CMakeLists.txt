@@ -47,11 +47,19 @@ target_link_libraries(visual_odometry ${OpenCV_LIBS} ${Pangolin_LIBRARIES} gtsam
 target_compile_definitions(visual_odometry PUBLIC OPENCV_DISABLE_EIGEN_TENSOR_SUPPORT=1)
 
 add_executable(view_gt
-    src/visualizer.cpp
-    src/view_gt.cpp)
+src/visualizer.cpp
+src/view_gt.cpp)
 target_link_libraries(view_gt ${OpenCV_LIBS} ${Pangolin_LIBRARIES} gtsam)
 
 add_executable(view_positions
-    src/visualizer.cpp
-    src/view_positions.cpp)
+src/visualizer.cpp
+src/view_positions.cpp)
 target_link_libraries(view_positions ${OpenCV_LIBS} ${Pangolin_LIBRARIES} gtsam)
+
+add_executable(test_module
+    src/ransac.cpp
+    src/test_module.cpp
+    src/utils.cpp
+    src/visualizer.cpp)
+target_link_libraries(test_module ${OpenCV_LIBS} ${Pangolin_LIBRARIES} gtsam)
+target_compile_definitions(test_module PUBLIC OPENCV_DISABLE_EIGEN_TENSOR_SUPPORT=1)
