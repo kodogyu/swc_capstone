@@ -1,8 +1,12 @@
 project(swc_capstone)
 
 cmake_minimum_required(VERSION 3.16)
-set(CMAKE_CXX_FLAGS "-std=c++17")
-set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
+
+
+IF(NOT CMAKE_BUILD_TYPE)
+  SET(CMAKE_BUILD_TYPE Debug)
+ENDIF()
 
 ##=========================DEPENDENCIES=========================##
 find_package(Eigen3 3.3 REQUIRED)   # -DEigen3_DIR=/usr/lib/cmake/eigen3 (3.3.7), /usr/local/share/eigen3/cmake (3.4)
