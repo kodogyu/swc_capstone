@@ -1,6 +1,6 @@
 #include "ransac.hpp"
 
-Ransac::Ransac() {};
+Ransac::Ransac() {}
 
 Ransac::Ransac(int sample_size, double inlier_prob, double threshold,
                 const std::vector<cv::Point2f> &image0_kp_pts,
@@ -13,7 +13,7 @@ Ransac::Ransac(int sample_size, double inlier_prob, double threshold,
     sample_pool_size_ = image0_kp_pts_.size();
     // max_iterations_ = std::log(1 - inlier_prob_) / std::log(1 - std::pow(alpha_, sample_size_));
     max_iterations_ = 150;
-};
+}
 
 void Ransac::runOnce() {
     int inlier_cnt;

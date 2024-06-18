@@ -10,6 +10,8 @@ public:
     void setKeypointsAndDescriptors(const std::vector<cv::KeyPoint> &keypoints, const cv::Mat &descriptors);
     void setFrameMatches(const std::vector<cv::DMatch> &matches_with_prev_frame);
 
+    void writeKeypoints(const std::string kp_filename);
+
     static int total_frame_cnt_;
 
     // identification
@@ -18,6 +20,7 @@ public:
 
     // frame image
     cv::Mat image_;
+    cv::Mat fisheye_image_;
 
     // keypoints and descriptors
     std::vector<cv::KeyPoint> keypoints_;

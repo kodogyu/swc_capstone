@@ -15,7 +15,7 @@ void Frame::setKeypointsAndDescriptors(const std::vector<cv::KeyPoint> &keypoint
     keypoints_ = keypoints;
 
     // init keypoints_pt_
-    for (int i = 0; i < keypoints_.size(); i++) {
+    for (unsigned int i = 0; i < keypoints_.size(); i++) {
         keypoints_pt_.push_back(keypoints[i].pt);
     }
     // subpixel
@@ -43,7 +43,7 @@ void Frame::setFrameMatches(const std::vector<cv::DMatch> &matches_with_prev_fra
     int queryIdx, trainIdx;
     std::shared_ptr<Frame> pPrev_frame = pPrevious_frame_.lock();
 
-    for (int i = 0; i < matches_with_prev_frame.size(); i++) {
+    for (unsigned int i = 0; i < matches_with_prev_frame.size(); i++) {
         queryIdx = matches_with_prev_frame[i].queryIdx;
         trainIdx = matches_with_prev_frame[i].trainIdx;
 
@@ -53,5 +53,15 @@ void Frame::setFrameMatches(const std::vector<cv::DMatch> &matches_with_prev_fra
 }
 
 
+void Frame::writeKeypoints(const std::string kp_dir) {
+    std::string kp_filename = kp_dir + "frame" + std::to_string(id_) + ".txt";
+    std::ofstream kp_file;
+    kp_file.open(kp_filename);
 
+    for (cv::KeyPoint kp : keypoints_) {
+        kp_file << kp.angle << " " << kp.class_id << " " << kp.octave << " " << kp.pt << " " << kp.response << " " << kp.size << std::endl;
+    }
+    kp_file.close();
 
+    std::cout << "number of keypoint [frame " << id_ << "] " << keypoints_.size() << ". " << kp_filename << std::endl;
+}

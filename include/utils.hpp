@@ -98,6 +98,8 @@ public:
                                         cv::Point2f img1_kp_pt,
                                         Eigen::Vector3d &triangulated_kp);
 
+    void fisheyeProcessing(std::vector<cv::KeyPoint> &keypoints);
+
 public:
     std::shared_ptr<Configuration> pConfig_;
 };

@@ -4,12 +4,13 @@
 # num_frames:
 #   -1: all frames
 #    n: n frames
-num_frames: 5
-frame_offset: 0
+num_frames: 10
+frame_offset: 7
 
-# # KITTI-360
-# is_kitti: 0
-# gt_path: /home/kodogyu/Datasets/KITTI-360/data_poses/2013_05_28_drive_0000_sync/cam0_to_world.txt
+# KITTI-360
+is_kitti: 0
+gt_path: /home/kodogyu/Datasets/KITTI-360/data_poses/2013_05_28_drive_0000_sync/cam0_to_world.txt
+left_images_dir: /home/kodogyu/Datasets/KITTI-360/data_2d_raw/2013_05_28_drive_0000_sync/image_02/data_rect
 
 # # perspective image
 # left_images_dir: /home/kodogyu/Datasets/KITTI-360/data_2d_raw/2013_05_28_drive_0000_sync/image_00/data_rgb
@@ -29,15 +30,15 @@ frame_offset: 0
 
 # left_images_dir: /home/kodogyu/github_repos/sfm/data/nutellar2/
 
-# Gazebo test bed
-is_kitti: 1
-gt_path: /home/kodogyu/swc_capstone/system_test/rotated_gt_trajectory_KITTI_format.txt
-left_images_dir: /home/kodogyu/swc_capstone/system_test/images
+# # Gazebo test bed
+# is_kitti: 1
+# gt_path: /home/kodogyu/swc_capstone/system_test/rotated_gt_trajectory_KITTI_format.txt
+# left_images_dir: /home/kodogyu/swc_capstone/system_test/images
 # left_images_dir: /home/kodogyu/swc_capstone/system_test/images/7x7
 
 #========== Camera parameters ==========#
 
-# # KITTI-360
+# KITTI-360
 # # perspective camera
 # is_fisheye: 0
 # fx: 788.629315
@@ -59,7 +60,6 @@ left_images_dir: /home/kodogyu/swc_capstone/system_test/images
 # cx: 682.049453
 # cy: 238.769549
 
-
 # # fisheye camera (MEI)
 # is_fisheye: 1
 # gamma1: 1.3363220825849971e+03
@@ -73,6 +73,14 @@ left_images_dir: /home/kodogyu/swc_capstone/system_test/images
 # p1: 4.2223943394772046e-04
 # p2: 4.2462134260997584e-04
 
+# fisheye camera (MEI), rectified
+is_fisheye: 0
+fx: 160.0
+fy: 120.0
+s: 0.0
+cx: 320.0
+cy: 240.0
+
 
 # # KITTI
 # is_fisheye: 0
@@ -82,21 +90,13 @@ left_images_dir: /home/kodogyu/swc_capstone/system_test/images
 # cx: 607.1928
 # cy: 185.2157
 
-# # nutella
+# # turtlebot3 waffle (Gazebo)
 # is_fisheye: 0
-# fx: 3092.8
-# fy: 3092.8
+# fx: 1206.890
+# fy: 1206.890
 # s: 0.0
-# cx: 2016
-# cy: 1512
-
-# turtlebot3 waffle (Gazebo)
-is_fisheye: 0
-fx: 1206.890
-fy: 1206.890
-s: 0.0
-cx: 960.5
-cy: 540.5
+# cx: 960.5
+# cy: 540.5
 
 #========== Visualize ==========#
 display_gt: 1
@@ -130,9 +130,9 @@ kps_per_patch: 10
 des_dist_thresh: 0.6
 
 #========== Optimization ==========#
-do_optimize: 1
-window_size: 5
-optimizer_verbose: 1
+do_optimize: 0
+window_size: 2
+optimizer_verbose: 0
 
 
 #========== Test ==========#

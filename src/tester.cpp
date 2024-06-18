@@ -80,8 +80,11 @@ void Tester::run(VisualOdometry &vo) {
         feature_timer.start();
 
         //* TEST mode
+
+        // 1. Checkerboard feature
+        /*
         cv::Size checkerboard_size = cv::Size(6, 8);
-        std::vector<cv::Size> checkerboard_sizes = {cv::Size(13, 9), cv::Size(10, 7), cv::Size(8, 6), cv::Size(7, 4), cv::Size(5, 3)};
+        std::vector<cv::Size> checkerboard_sizes = {cv::Size(15, 10), cv::Size(10, 7), cv::Size(9, 6), cv::Size(7, 4), cv::Size(4, 3)};
 
         if (vo.pConfig_->test_mode_) {
             std::cout << "\n[test mode] Feature extraction" << std::endl;
@@ -123,6 +126,25 @@ void Tester::run(VisualOdometry &vo) {
 
             vo.pUtils_->drawKeypoints(pCurr_frame);
         }
+        */
+
+        // 2. ORB-SLAM3 features, and matches
+        std::string feature_match_dir = "/home/kodogyu/github_repos/ORB_SLAM3/my_dir/";
+
+        if (vo.pConfig_->test_mode_) {
+            std::cout << "\n[test mode] Feature extraction" << std::endl;
+
+            if (run_iter == 1) {  // first run
+                // --- ORB-SLAM3 features
+                setFrameKeypoints_pt(pPrev_frame, readKeypoints(feature_match_dir, pPrev_frame->id_, vo.pConfig_->frame_offset_));
+
+                vo.pUtils_->drawKeypoints(pPrev_frame);
+            }
+            // --- ORB-SLAM3 features
+            setFrameKeypoints_pt(pCurr_frame, readKeypoints(feature_match_dir, pCurr_frame->id_, vo.pConfig_->frame_offset_));
+
+            vo.pUtils_->drawKeypoints(pCurr_frame);
+        }
 
         vo.feature_extraction_costs_.push_back(feature_timer.stop());
 
@@ -144,6 +166,9 @@ void Tester::run(VisualOdometry &vo) {
         std::vector<cv::Point2f> image1_kp_pts;
 
         //* TEST mode
+
+        // 1. checkerboard matches
+        /*
         if (vo.pConfig_->test_mode_) {
             std::cout << "\n[test mode] Feature matching" << std::endl;
 
@@ -161,7 +186,7 @@ void Tester::run(VisualOdometry &vo) {
             int kp_idx = 0;
             for (int pattern_idx = 0; pattern_idx < checkerboard_sizes.size(); pattern_idx++) {
                 if (pPrev_frame->keypoints_pt_[kp_idx] == cv::Point2f(-1, -1) || pCurr_frame->keypoints_pt_[kp_idx] == cv::Point2f(-1, -1)) {
-                    continue;
+                    ;  // do nothing
                 }
                 else {
                     for (int i = 0; i < checkerboard_sizes[pattern_idx].area(); i++) {
@@ -185,12 +210,49 @@ void Tester::run(VisualOdometry &vo) {
 
             good_matches_size = good_matches_test.size();
         }
+        */
+
+        // 2. ORB-SLAM3 features, and matches
+        if (vo.pConfig_->test_mode_) {
+            std::cout << "\n[test mode] Feature matching" << std::endl;
+
+            // handmade feature matches
+            good_matches_test = readMatches(feature_match_dir, pPrev_frame->id_, vo.pConfig_->frame_offset_);
+            raw_matches_size = manual_matches_vec_[run_iter - 1].size();
+
+            raw_matches_size = good_matches_test.size();
+
+            // filter matches
+            if (vo.pConfig_->filtering_mode_ == FilterMode::MATCH_FILTERING) {
+                std::cout << "match size before filtering: " << good_matches_test.size() << std::endl;
+                filterMatches(pPrev_frame, good_matches_test, vo.pConfig_);
+                std::cout << "match size after filtering: " << good_matches_test.size() << std::endl;
+
+                // draw grid
+                vo.pUtils_->drawGrid(pPrev_frame->image_);
+
+                // draw keypoints
+                std::string tail;
+                tail = "_(" + std::to_string(vo.pConfig_->patch_width_) + ", " + std::to_string(vo.pConfig_->patch_height_) + ", " + std::to_string(vo.pConfig_->kps_per_patch_) + ")";
+                vo.pUtils_->drawKeypoints(pPrev_frame, "output_logs/filtered_matches", tail);
+            }
+
+            // set keyframe matches
+            setFrameMatches(pCurr_frame, good_matches_test);
+
+            good_matches_size = good_matches_test.size();
+
+            for (auto match : good_matches_test) {
+                image0_kp_pts.push_back(pPrev_frame->keypoints_pt_[match.queryIdx]);
+                image1_kp_pts.push_back(pCurr_frame->keypoints_pt_[match.trainIdx]);
+            }
+        }
 
         std::cout << "original features for image" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + std::to_string(pCurr_frame->frame_image_idx_) + ": " << raw_matches_size << std::endl;
         std::cout << "good features for image" + std::to_string(pPrev_frame->frame_image_idx_) + "&" + std::to_string(pCurr_frame->frame_image_idx_) + ": " << good_matches_size << std::endl;
 
         // essential matrix
-        cv::Mat essential_mat;
+        cv::Mat essential_mat = cv::Mat::zeros(3, 3, CV_32F);
         cv::Mat essential_mask;
 
         //* TEST mode
@@ -224,6 +286,9 @@ void Tester::run(VisualOdometry &vo) {
         cv::Mat pose_mask = essential_mask.clone();
 
         //* TEST mode
+
+        // 1. checkerboard motion estimation
+        /*
         if (vo.pConfig_->test_mode_) {
             std::cout << "\n[test mode] Motion estimation" << std::endl;
 
@@ -251,8 +316,8 @@ void Tester::run(VisualOdometry &vo) {
                 std::vector<cv::Point3d> object_points;
                 std::vector<cv::Point2d> image_points;
 
-                // for (int i = 0; i < good_matches_size; i++) {
-                for (int i = 0; i < checkerboard_sizes[0].area(); i++) {
+                for (int i = 0; i < good_matches_size; i++) {
+                // for (int i = 0; i < checkerboard_sizes[0].area(); i++) {
                     // object points
                     Eigen::Vector3d object_point;
 
@@ -264,14 +329,16 @@ void Tester::run(VisualOdometry &vo) {
                     object_points.push_back(object_point_cv);
 
                     // image points
-                    cv::Point2f keypoint_pt = image1_kp_pts.at(good_matches_test[i].trainIdx);
+                    cv::Point2f keypoint_pt = pCurr_frame->keypoints_pt_.at(good_matches_test[i].trainIdx);
                     image_points.push_back(keypoint_pt);
 
                     std::cout << "landmark idx: " << landmark_idx << ", image1 keypoint idx: " << good_matches_test[i].trainIdx << std::endl;
                 }
 
-                cv::solvePnP(object_points, image_points, vo.pCamera_->intrinsic_, vo.pCamera_->distortion_, rvec, tvec, false, cv::SOLVEPNP_IPPE);
+                bool pnp_result = cv::solvePnP(object_points, image_points, vo.pCamera_->intrinsic_, vo.pCamera_->distortion_, rvec, tvec, false, cv::SOLVEPNP_ITERATIVE);
+                // cv::solvePnP(object_points, image_points, vo.pCamera_->intrinsic_, vo.pCamera_->distortion_, rvec, tvec, false, cv::SOLVEPNP_IPPE);
                 // cv::solvePnP(object_points, image_points, vo.pCamera_->intrinsic_, vo.pCamera_->distortion_, rvec, tvec, false, cv::SOLVEPNP_EPNP);
+                std::cout << "pnp result: " << pnp_result << std::endl;
                 std::cout << "rvec.size: " << rvec.size << std::endl;
                 std::cout << "tvec.size: " << tvec.size << std::endl;
 
@@ -288,6 +355,15 @@ void Tester::run(VisualOdometry &vo) {
                 relative_pose = relative_pose.inverse();
             }
         }
+        */
+
+        // 2. general pose estimation
+        if (vo.pConfig_->test_mode_) {
+            std::cout << "\n[test mode] Motion estimation" << std::endl;
+
+            // --- My implementation
+            vo.pUtils_->recoverPose(vo.pCamera_->intrinsic_, essential_mat, image0_kp_pts, image1_kp_pts, relative_pose, pose_mask);
+        }
         std::cout << "relative pose:\n" << relative_pose.matrix() << std::endl;
 
         pCurr_frame->relative_pose_ = relative_pose;
@@ -295,6 +371,8 @@ void Tester::run(VisualOdometry &vo) {
         vo.poses_.push_back(pCurr_frame->pose_);
         vo.relative_poses_.push_back(relative_pose);
 
+        int pose_mask_cnt = vo.pUtils_->countMask(pose_mask);
+        std::cout << "pose_mask cnt: " << pose_mask_cnt << std::endl;
 
         // end timer [motion estimation]
         vo.motion_estimation_costs_.push_back(motion_estimation_timer.stop());
@@ -313,6 +391,8 @@ void Tester::run(VisualOdometry &vo) {
         if (vo.pConfig_->test_mode_) {
             std::cout << "\n[test mode] Triangulation" << std::endl;
 
+            //! essential_mask was pose_mask
+            // triangulate3(vo, vo.pCamera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches_test, essential_mask, keypoints_3d);
             triangulate3(vo, vo.pCamera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches_test, pose_mask, keypoints_3d);
             std::cout << "[debug] Triangulation done." << std::endl;
         }
@@ -628,31 +708,35 @@ void Tester::triangulate3(const VisualOdometry &visual_odometry,
         if (mask.at<unsigned char>(i) == 1) {
             bool new_landmark = true;
             bool landmark_accepted = true;
-            cv::Point2f prev_frame_kp_pt = pPrev_frame->keypoints_pt_[good_matches[i].queryIdx];
-            cv::Point2f curr_frame_kp_pt = pCurr_frame->keypoints_pt_[good_matches[i].trainIdx];
+            cv::Point2f prev_frame_kp_pt = pPrev_frame->keypoints_pt_.at(good_matches[i].queryIdx);
+            cv::Point2f curr_frame_kp_pt = pCurr_frame->keypoints_pt_.at(good_matches[i].trainIdx);
 
             // keypoint가 이전 프레임에서 이제까지 한번도 landmark로 선택되지 않았는지 확인 (보존하고 있는 frame에 한해서 검사)
-            bool found_landmark = false;
+            // bool found_landmark = false;
             int kp_idx = good_matches[i].queryIdx;
             std::shared_ptr<Frame> pPrevNFrame = pPrev_frame;
-            int landmark_frame_id = -1;
+            // int landmark_frame_id = -1;
             int landmark_id = -1;
-            while (pPrevNFrame->id_ > 0) {
-                landmark_frame_id = pPrevNFrame->id_;
-                landmark_id = pPrevNFrame->keypoint_landmark_[kp_idx].second;
-                found_landmark = (landmark_id != -1);
+            // while (pPrevNFrame->id_ > 0) {
+            //     landmark_frame_id = pPrevNFrame->id_;
+            //     landmark_id = pPrevNFrame->keypoint_landmark_.at(kp_idx).second;
+            //     found_landmark = (landmark_id != -1);
 
-                if (found_landmark) {
-                    break;
-                }
+            //     if (found_landmark) {
+            //         break;
+            //     }
 
-                kp_idx = pPrevNFrame->matches_with_prev_frame_[kp_idx];
-                pPrevNFrame = pPrevNFrame->pPrevious_frame_.lock();
-            }
-            if (found_landmark) {
-                new_landmark = false;
-                landmark_accepted = true;
-            }
+            //     kp_idx = pPrevNFrame->matches_with_prev_frame_.at(kp_idx);
+
+            //     if (kp_idx == -1) {
+            //         break;
+            //     }
+            //     pPrevNFrame = pPrevNFrame->pPrevious_frame_.lock();
+            // }
+            // if (found_landmark) {
+            //     new_landmark = false;
+            //     landmark_accepted = true;
+            // }
 
             // // hard matching
             // if (pPrev_frame->keypoint_landmark_[good_matches[i].queryIdx].second != -1) {  // landmark already exists
@@ -719,7 +803,7 @@ void Tester::drawReprojectedKeypoints3D(const std::shared_ptr<Frame> &pFrame,
     cv::cvtColor(pPrev_frame->image_, prev_frame_img, cv::COLOR_GRAY2BGR);
 
     std::vector<cv::Point2f> prev_projected_pts, curr_projected_pts;
-    reprojectLandmarks(pFrame, good_matches, cv::Mat(), triangulated_kps, prev_projected_pts, curr_projected_pts);
+    reprojectLandmarks(pFrame, cv::Mat(), triangulated_kps, prev_projected_pts, curr_projected_pts);
 
     int essential_inlier_cnt = 0;
     int pose_inlier_cnt = 0;
@@ -789,12 +873,17 @@ void Tester::drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
     }
 
     std::vector<cv::Point2f> prev_projected_pts, curr_projected_pts;
-    reprojectLandmarks(pFrame, good_matches, cv::Mat(), landmarks, prev_projected_pts, curr_projected_pts);
+    reprojectLandmarks(pFrame, cv::Mat(), landmarks, prev_projected_pts, curr_projected_pts);
 
     int essential_inlier_cnt = 0;
-    for (int i = 0; i < good_matches.size(); i++) {
-        cv::Point2f measurement_point0 = pPrev_frame->keypoints_pt_[good_matches[i].queryIdx];
-        cv::Point2f measurement_point1 = pFrame->keypoints_pt_[good_matches[i].trainIdx];
+    // for (int i = 0; i < good_matches.size(); i++) {
+    for (int i = 0; i < landmarks.size(); i++) {
+        std::shared_ptr<Landmark> pLandmark = pFrame->landmarks_[i];
+
+        int prev_frame_kp_idx = pLandmark->observations_.find(pPrev_frame->id_)->second;
+        int curr_frame_kp_idx = pLandmark->observations_.find(pFrame->id_)->second;
+        cv::Point2f measurement_point0 = pPrev_frame->keypoints_pt_[prev_frame_kp_idx];
+        cv::Point2f measurement_point1 = pFrame->keypoints_pt_[curr_frame_kp_idx];
 
         // draw images
         cv::rectangle(prev_frame_img,
@@ -844,7 +933,7 @@ void Tester::drawMatches(const std::shared_ptr<Frame> &pPrev_frame, const std::s
     cv::hconcat(prev_frame_img, curr_frame_img, image_matches);
 
     int image_w = prev_frame_img.cols;
-    int image_h = prev_frame_img.rows;
+    // int image_h = prev_frame_img.rows;
 
     for (int i = 0; i < good_matches.size(); i++) {
         cv::Point2f prev_kp_pt = pPrev_frame->keypoints_pt_[good_matches[i].queryIdx];
@@ -883,7 +972,6 @@ void Tester::drawMatches(const std::shared_ptr<Frame> &pPrev_frame, const std::s
 
 
 void Tester::reprojectLandmarks(const std::shared_ptr<Frame> &pFrame,
-                            const std::vector<TestMatch> &matches,
                             const cv::Mat &mask,
                             const std::vector<Eigen::Vector3d> &landmark_points_3d,
                             std::vector<cv::Point2f> &prev_projected_pts,
@@ -905,7 +993,7 @@ void Tester::reprojectLandmarks(const std::shared_ptr<Frame> &pFrame,
     // std::cout << "prev pose:\n" << pPrev_frame->pose_.matrix() << std::endl;
     // std::cout << "curr pose:\n" << pFrame->pose_.matrix() << std::endl;
 
-    for (int i = 0; i < matches.size(); i++) {
+    for (int i = 0; i < landmark_points_3d.size(); i++) {
         if (mask.empty() || mask.at<unsigned char>(i) == 1) {
             Eigen::Vector3d landmark_point_3d = landmark_points_3d[i];
             Eigen::Vector4d landmark_point_3d_homo(landmark_point_3d[0],
@@ -933,7 +1021,7 @@ double Tester::calcReprojectionError(const std::shared_ptr<Frame> &pFrame,
                                     const std::vector<Eigen::Vector3d> &landmark_points_3d) {
     // assume matches.size() = landmark_points_3d.size()
     std::vector<cv::Point2f> prev_projected_pts, curr_projected_pts;
-    reprojectLandmarks(pFrame, matches, cv::Mat(), landmark_points_3d, prev_projected_pts, curr_projected_pts);
+    reprojectLandmarks(pFrame, cv::Mat(), landmark_points_3d, prev_projected_pts, curr_projected_pts);
 
     std::shared_ptr<Frame> pPrev_frame = pFrame->pPrevious_frame_.lock();
 
@@ -1293,10 +1381,149 @@ std::vector<std::vector<cv::Point2f>> Tester::findMultipleCheckerboards(const cv
 }
 
 
+std::vector<cv::Point2f> Tester::readKeypoints(const std::string dir_name, const int frame_id, const int frame_offset) {
+    std::ifstream kp_file;
+
+    int kp_frame_idx = frame_id + frame_offset;
+    std::string kp_filename = dir_name + "keypoints/frame" + std::to_string(kp_frame_idx) + ".txt";
+    kp_file.open(kp_filename);
+
+    std::vector<cv::Point2f> result;
+
+    // Keypoints
+    if (!kp_file.is_open()) {
+        std::cout << "Can not open keypoint file. " << kp_filename << std::endl;
+        return result;
+    }
+
+    std::string line;
+    std::getline(kp_file, line);  // skip the first line
+
+    while (std::getline(kp_file, line)) {
+        std::stringstream ss(line);
+
+        std::string word;
+        std::vector<std::string> words;
+
+        while (getline(ss, word, ' ')) {
+            words.push_back(word);
+        }
+
+        cv::KeyPoint kp;
+        for (int i = 0; i < words.size(); i++) {
+            std::string word = words[i];
+
+            switch(i) {
+                case 0:
+                    kp.angle = std::stof(word);
+                    break;
+                case 1:
+                    kp.class_id = std::stoi(word);
+                    break;
+                case 2:
+                    kp.octave = std::stoi(word);
+                    break;
+                case 3:
+                    word = word.substr(1, word.size()-2);
+                    kp.pt.x = std::stof(word);
+                    break;
+                case 4:
+                    word = word.substr(0, word.size()-1);
+                    kp.pt.y = std::stof(word);
+                    break;
+                case 5:
+                    kp.response = std::stof(word);
+                    break;
+                case 6:
+                    kp.size = std::stof(word);
+                    break;
+                default:
+                    std::cout << "keypoint reading error" << std::endl;
+                    return result;
+            }
+        }
+        result.push_back(kp.pt);
+    }
+    kp_file.close();
+
+    std::cout << "successfully read keypoint file." << kp_filename << std::endl;
+
+    return result;
+}
+
+std::vector<TestMatch> Tester::readMatches(const std::string dir_name, const int prevFrame_id, const int frame_offset) {
+    std::ifstream match_file;
+
+    int match_file_idx = prevFrame_id + frame_offset;
+    std::string match_filename = dir_name + "matches/match_" + std::to_string(match_file_idx) + "_" + std::to_string(match_file_idx+1) + ".txt";
+    match_file.open(match_filename);
+
+    std::vector<TestMatch> result;
+
+    // Matches
+    if (!match_file.is_open()) {
+        std::cout << "Can not open match file. " << match_filename << std::endl;
+        return result;
+    }
+
+    std::string line;
+    std::getline(match_file, line);  // skip the first line
+
+    while (std::getline(match_file, line)) {
+        std::stringstream ss(line);
+
+        std::string word;
+        std::vector<int> match_elem;
+        while (std::getline(ss, word, ' ')) {
+            match_elem.push_back(std::stoi(word));
+        }
+
+        if (match_elem[1] != -1) {
+            TestMatch match(match_elem[0], match_elem[1]);
+            match.distance = match_elem[2];
+
+            result.push_back(match);
+        }
+    }
+    match_file.close();
+
+    std::cout << "successfully read match file." << match_filename << std::endl;
+
+    return result;
+}
 
 
+void Tester::filterMatches(const std::shared_ptr<Frame> &pFrame, std::vector<TestMatch> &matches, const std::shared_ptr<Configuration> &pConfig) {
+    cv::Size patch_size = cv::Size(pConfig->patch_width_, pConfig->patch_height_);
+    cv::Size image_size = cv::Size(pFrame->image_.cols, pFrame->image_.rows);
 
+    int row_iter = (image_size.height - 1) / patch_size.height;
+    int col_iter = (image_size.width - 1) / patch_size.width;
 
+    std::vector<std::vector<int>> bins(row_iter + 1, std::vector<int>(col_iter + 1));
+    std::cout << "bin size: (" << bins.size() << ", " << bins[0].size() << ")" << std::endl;
+
+    std::vector<TestMatch> filtered_matches;
+
+    // sort matches
+    std::sort(matches.begin(), matches.end(), [](const TestMatch& a, const TestMatch& b) {
+        return a.distance < b.distance;
+    });
+
+    // filtering
+    for (int i = 0; i < matches.size(); i++) {
+        cv::Point2f kp_pt = pFrame->keypoints_pt_[matches[i].queryIdx];
+
+        int bin_cnt = bins[kp_pt.y / patch_size.height][kp_pt.x / patch_size.width];
+        if (bin_cnt < pConfig->kps_per_patch_) {
+            filtered_matches.push_back(matches[i]);
+
+            bins[kp_pt.y / patch_size.height][kp_pt.x / patch_size.width]++;
+        }
+    }
+
+    matches = filtered_matches;
+}
 
 
 

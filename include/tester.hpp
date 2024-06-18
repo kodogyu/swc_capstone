@@ -14,6 +14,7 @@ public:
 
     int queryIdx;
     int trainIdx;
+    int distance;
 };
 
 class VisualOdometry;   // incomplete type
@@ -49,7 +50,6 @@ public:
     void drawMatches(const std::shared_ptr<Frame> &pPrev_frame, const std::shared_ptr<Frame> &pCurr_frame, const std::vector<TestMatch> &good_matches);
 
     void reprojectLandmarks(const std::shared_ptr<Frame> &pFrame,
-                            const std::vector<TestMatch> &matches,
                             const cv::Mat &mask,
                             const std::vector<Eigen::Vector3d> &landmark_points_3d,
                             std::vector<cv::Point2f> &prev_projected_pts,
@@ -63,6 +63,11 @@ public:
 
     std::vector<cv::Point2f> findMultipleCheckerboards(const cv::Mat &image, const cv::Size &patternSize, int nCheckerboards);
     std::vector<std::vector<cv::Point2f>> findMultipleCheckerboards(const cv::Mat &image, const std::vector<cv::Size> &patternSizes, int nCheckerboardsEach);
+
+    std::vector<cv::Point2f> readKeypoints(const std::string dir_name, const int frame_id, const int frame_offset);
+    std::vector<TestMatch> readMatches(const std::string dir_name, const int prevFrame_id, const int frame_offset);
+
+    void filterMatches(const std::shared_ptr<Frame> &pFrame, std::vector<TestMatch> &matches, const std::shared_ptr<Configuration> &pConfig);
 
     std::vector<cv::Point2f> manual_kp_frame0_;
     std::vector<cv::Point2f> manual_kp_frame1_;

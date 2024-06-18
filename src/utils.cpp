@@ -170,9 +170,11 @@ void Utils::drawReprojectedLandmarks(const std::shared_ptr<Frame> &pFrame,
     reproject3DPoints(pFrame, good_matches, cv::Mat(), landmarks, prev_projected_pts, curr_projected_pts);
 
     int essential_inlier_cnt = 0;
-    for (int i = 0; i < good_matches.size(); i++) {
-        cv::Point2f measurement_point0 = pPrev_frame->keypoints_pt_[good_matches[i].queryIdx];
-        cv::Point2f measurement_point1 = pFrame->keypoints_pt_[good_matches[i].trainIdx];
+    for (int i = 0; i < landmarks.size(); i++) {std::shared_ptr<Landmark> pLandmark = pFrame->landmarks_[i];
+        int prev_frame_kp_idx = pLandmark->observations_.find(pPrev_frame->id_)->second;
+        int curr_frame_kp_idx = pLandmark->observations_.find(pFrame->id_)->second;
+        cv::Point2f measurement_point0 = pPrev_frame->keypoints_pt_[prev_frame_kp_idx];
+        cv::Point2f measurement_point1 = pFrame->keypoints_pt_[curr_frame_kp_idx];
 
         // draw images
         cv::rectangle(prev_frame_img,
@@ -640,6 +642,7 @@ Eigen::Isometry3d Utils::getGT(const int frame_idx){
 double Utils::calcReprojectionError(const std::vector<std::shared_ptr<Frame>> &frames) {
     double reprojection_error = 0;
 
+    int landmark_cnt = 0;
     for (const auto pFrame: frames) {
         cv::Mat frame_img;
         cv::cvtColor(pFrame->image_, frame_img, cv::COLOR_GRAY2BGR);
@@ -668,10 +671,12 @@ double Utils::calcReprojectionError(const std::vector<std::shared_ptr<Frame>> &f
             cv::Point2f error_vector = projected_point - measurement_point;
             error = sqrt(error_vector.x * error_vector.x + error_vector.y * error_vector.y);
             reprojection_error += error;
+
+            landmark_cnt++;
         }
     }
 
-    return reprojection_error;
+    return reprojection_error / (double)landmark_cnt;
 }
 
 double Utils::calcReprojectionError(const std::shared_ptr<Frame> &pFrame) {
@@ -684,6 +689,7 @@ double Utils::calcReprojectionError(const std::shared_ptr<Frame> &pFrame) {
     Eigen::Isometry3d c_T_w = w_T_c.inverse();
 
     double error = 0;
+    int landmark_cnt = 0;
     for (const auto pLandmark : pFrame->landmarks_) {
         Eigen::Vector3d landmark_point_3d = pLandmark->point_3d_;
         Eigen::Vector4d landmark_point_3d_homo(landmark_point_3d[0],
@@ -700,9 +706,11 @@ double Utils::calcReprojectionError(const std::shared_ptr<Frame> &pFrame) {
         cv::Point2f error_vector = projected_point - measurement_point;
         error = sqrt(error_vector.x * error_vector.x + error_vector.y * error_vector.y);
         reprojection_error += error;
+
+        landmark_cnt++;
     }
 
-    return reprojection_error;
+    return reprojection_error / double(landmark_cnt);
 }
 
 double Utils::calcReprojectionError(const std::shared_ptr<Frame> &pFrame,
@@ -1108,7 +1116,7 @@ void Utils::decomposeEssentialMat(const cv::Mat &essential_mat, cv::Mat &R1, cv:
     t = U.col(2);
 
     double det_R1 = cv::determinant(R1);
-    double det_R2 = cv::determinant(R2);
+    // double det_R2 = cv::determinant(R2);
     // std::cout << "det R1: " << det_R1 << std::endl;
     // std::cout << "det R2: " << det_R2 << std::endl;
 
@@ -1358,6 +1366,38 @@ void Utils::triangulateKeyPoint(std::shared_ptr<Frame> &pFrame,
     triangulated_kp = point_3d;
 }
 
+void Utils::fisheyeProcessing(std::vector<cv::KeyPoint> &keypoints) {
+    // MEI (UCM) camera model
+    cv::Mat K = (cv::Mat_<double>(3,3) << pConfig_->fx_, 0, pConfig_->cx_,
+                                          0, pConfig_->fy_, pConfig_->cy_,
+                                          0, 0, 1);
+    cv::Mat D = (cv::Mat_<double>(4, 1) << pConfig_->k1_, pConfig_->k2_, pConfig_->p1_, pConfig_->p2_);
+    double xi = pConfig_->xi_;
 
+    // get mapping matrix (fisheye -> rectified)
+    cv::Size new_size = cv::Size(1280, 720);
+    float focal_length = 300.0;
+    cv::Mat new_K = (cv::Mat_<double>(3, 3) << focal_length, 0, new_size.width/2,
+                                               0, focal_length, new_size.height/2,
+                                               0, 0, 1);
+
+    cv::Mat map1, map2;
+    cv::omnidir::initUndistortRectifyMap(K, D, xi, cv::Mat(), new_K, new_size, CV_32FC1, map1, map2, cv::omnidir::RECTIFY_PERSPECTIVE);
+
+    // undistort keypoints
+    std::vector<cv::Point2f> dist_kp_pts, undist_kp_pts;
+    dist_kp_pts.reserve(keypoints.size());
+    undist_kp_pts.reserve(keypoints.size());
+
+    for (cv::KeyPoint kp : keypoints) {
+        dist_kp_pts.push_back(kp.pt);
+    }
+
+    cv::omnidir::undistortPoints(dist_kp_pts, undist_kp_pts, K, D, xi, cv::Mat());
+
+    for (int i = 0; i < keypoints.size(); i++) {
+        keypoints[i].pt = undist_kp_pts[i];
+    }
+}
 
 

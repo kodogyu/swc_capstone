@@ -53,6 +53,7 @@ void VisualOdometry::run() {
         pPrev_frame->pNext_frame_ = pCurr_frame;
 
         //**========== 1. Feature extraction ==========**//
+        std::cout << "\n----- 1. Feature extraction -----" << std::endl;
         // start timer [feature extraction]
         Timer feature_timer;
         feature_timer.start();
@@ -66,10 +67,16 @@ void VisualOdometry::run() {
             detectAndCompute(pPrev_frame->image_, cv::Mat(), prev_image_keypoints, prev_image_descriptors);
             pPrev_frame->setKeypointsAndDescriptors(prev_image_keypoints, prev_image_descriptors);
             pUtils_->drawKeypoints(pPrev_frame);
+
+            // write keypoints
+            pPrev_frame->writeKeypoints("/home/kodogyu/swc_capstone/output_logs/keypoints/");
         }
         detectAndCompute(pCurr_frame->image_, cv::Mat(), curr_image_keypoints, curr_image_descriptors);
         pCurr_frame->setKeypointsAndDescriptors(curr_image_keypoints, curr_image_descriptors);
         pUtils_->drawKeypoints(pCurr_frame);
+
+        // write keypoints
+        pCurr_frame->writeKeypoints("/home/kodogyu/swc_capstone/output_logs/keypoints/");
 
         // filter keypoints
         if (pConfig_->filtering_mode_ == FilterMode::KEYPOINT_FILTERING) {
@@ -201,6 +208,7 @@ void VisualOdometry::run() {
         triangulation_timer.start();
 
         std::vector<Eigen::Vector3d> keypoints_3d;
+        // triangulate2(pCamera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, pose_mask, keypoints_3d);
         triangulate3(pCamera_->intrinsic_, pPrev_frame, pCurr_frame, good_matches, pose_mask, keypoints_3d);
 
         // end timer [triangulation]
@@ -226,15 +234,15 @@ void VisualOdometry::run() {
         Timer scaling_timer;
         scaling_timer.start();
 
-        std::vector<int> scale_mask(pCurr_frame->keypoints_pt_.size(), 0);
-        // double est_scale_ratio = estimateScale(pPrev_frame, pCurr_frame, scale_mask);
-        double est_scale_ratio = estimateScale2(pPrev_frame, pCurr_frame, scale_mask);
-        double gt_scale_ratio = getGTScale(pCurr_frame);
-        std::cout << "estimated scale: " << est_scale_ratio << ". GT scale: " << gt_scale_ratio << std::endl;
-        scales_.push_back(est_scale_ratio);
-        gt_scales_.push_back(gt_scale_ratio);
-        // applyScale(pCurr_frame, gt_scale_ratio, scale_mask);
-        // applyScale(pCurr_frame, est_scale_ratio, scale_mask);
+        // std::vector<int> scale_mask(pCurr_frame->keypoints_pt_.size(), 0);
+        // // double est_scale_ratio = estimateScale(pPrev_frame, pCurr_frame, scale_mask);
+        // double est_scale_ratio = estimateScale2(pPrev_frame, pCurr_frame, scale_mask);
+        // double gt_scale_ratio = getGTScale(pCurr_frame);
+        // std::cout << "estimated scale: " << est_scale_ratio << ". GT scale: " << gt_scale_ratio << std::endl;
+        // scales_.push_back(est_scale_ratio);
+        // gt_scales_.push_back(gt_scale_ratio);
+        // // applyScale(pCurr_frame, gt_scale_ratio, scale_mask);
+        // // applyScale(pCurr_frame, est_scale_ratio, scale_mask);
 
         // end timer [scaling]
         scaling_costs_.push_back(scaling_timer.stop());
@@ -675,7 +683,6 @@ double VisualOdometry::estimateScale(const std::shared_ptr<Frame> &pPrev_frame, 
     return scale_ratio;
 }
 
-
 double VisualOdometry::estimateScale2(const std::shared_ptr<Frame> &pPrev_frame, const std::shared_ptr<Frame> &pCurr_frame, std::vector<int> &scale_mask) {
     std::cout << "----- VisualOdometry::estimateScale2 -----" << std::endl;
 
@@ -875,6 +882,7 @@ void VisualOdometry::detectAndCompute(const cv::Mat &image, cv::Mat mask, std::v
     else if (pConfig_->feature_extractor_ == 1) {   // SIFT
         sift_->detectAndCompute(image, mask, keypoints, descriptors);
     }
+
 }
 
 void VisualOdometry::knnMatch(const cv::Mat& queryDescriptors, const cv::Mat& trainDescriptors, std::vector<std::vector<cv::DMatch>> &image_matches01_vec, int k) {
@@ -884,6 +892,9 @@ void VisualOdometry::knnMatch(const cv::Mat& queryDescriptors, const cv::Mat& tr
     else if (pConfig_->feature_extractor_ == 1) {   // SIFT
         sift_matcher_->knnMatch(queryDescriptors, trainDescriptors, image_matches01_vec, k);  // prev -> curr matches
     }
+
+    // fisheye processing
+    
 }
 
 void VisualOdometry::match(const cv::Mat &queryDescriptors, const cv::Mat &trainDescriptors, std::vector<cv::DMatch> &matches) {
